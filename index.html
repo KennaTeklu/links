@@ -158,34 +158,6 @@
   </div>
 </div>
 
-<div id="fullscreenPrompt" style="
-  position: fixed;
-  top: 60px;
-  left: 16px;
-  right: 16px;
-  background: #1e2129e6;
-  backdrop-filter: blur(20px);
-  padding: 12px 16px;
-  border-radius: 30px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  z-index: 150;
-  transition: opacity 0.3s;
-">
-  <span> Enjoy fullscreen mode. Tap the button below.</span>
-  <button id="welcomeFullscreenBtn" style="
-    background: #4c6ef5;
-    border: none;
-    color: white;
-    padding: 6px 16px;
-    border-radius: 30px;
-    font-weight: bold;
-    cursor: pointer;
-  ">Fullscreen</button>
-</div>
-
 <div class="settings-dots" id="dotsMenu">⋮</div>
 <div class="menu-dropdown" id="viewMenu">
   <div class="menu-item" id="fullscreenBtn">
@@ -261,32 +233,7 @@ function addNotification(msg, icon = "info-circle") {
   }, 5000);
   notificationTimeouts.set(id, timeoutId);
 }
-// Show fullscreen prompt only once per session
-if (!sessionStorage.getItem('fullscreenPromptShown')) {
-  const promptDiv = document.getElementById('fullscreenPrompt');
-  if (promptDiv) {
-    promptDiv.style.display = 'flex';
-    sessionStorage.setItem('fullscreenPromptShown', 'true');
-  }
-}
 
-const welcomeBtn = document.getElementById('welcomeFullscreenBtn');
-if (welcomeBtn) {
-  welcomeBtn.addEventListener('click', () => {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen()
-        .then(() => {
-          addNotification("Fullscreen mode active", "expand");
-          // Hide prompt after entering fullscreen
-          const promptDiv = document.getElementById('fullscreenPrompt');
-          if (promptDiv) promptDiv.style.display = 'none';
-        })
-        .catch(err => addNotification("Fullscreen failed", "exclamation-triangle"));
-    } else {
-      addNotification("Fullscreen not supported", "exclamation-triangle");
-    }
-  });
-}
 // Helper: floating toast (auto‑removes after 3s)
 function showToastNotification(msg, icon) {
   let toast = document.getElementById('tempToast');
@@ -874,7 +821,7 @@ function renderCurrentPage() {
     renderDots();
   }
 
-  // --- REVERSIBLE NOTIFICATION DRAWER (swipe up/down) ---
+    // --- REVERSIBLE NOTIFICATION DRAWER (swipe up/down) ---
   const drawer = document.getElementById('notifDrawer');
   let touchStartY = 0, touchMoveY = 0;
   let isDraggingDrawer = false;
@@ -883,12 +830,10 @@ function renderCurrentPage() {
   viewportDiv.addEventListener('touchstart', (e) => {
     const rect = drawer.getBoundingClientRect();
     const isDrawerOpen = drawer.classList.contains('open');
-    // if drawer is open, allow swipe up to close
     if (isDrawerOpen) {
       touchStartY = e.touches[0].clientY;
       isDraggingDrawer = true;
     } else if (e.touches[0].clientY < 50) {
-      // top edge swipe to open
       touchStartY = e.touches[0].clientY;
       isDraggingDrawer = true;
     } else {
@@ -902,12 +847,10 @@ function renderCurrentPage() {
     const delta = currentY - touchStartY;
     const isOpen = drawer.classList.contains('open');
     if (isOpen && delta < -30) {
-      // swipe up to close
       drawer.classList.remove('open');
       isDraggingDrawer = false;
       addNotification("Notifications closed", "chevron-up");
     } else if (!isOpen && delta > 40) {
-      // swipe down to open
       drawer.classList.add('open');
       isDraggingDrawer = false;
       addNotification("Notifications open", "chevron-down");
@@ -918,47 +861,44 @@ function renderCurrentPage() {
     isDraggingDrawer = false;
   });
 
-  // Close drawer when tapping outside (optional)
   document.addEventListener('click', (e) => {
     if (drawer.classList.contains('open') && !drawer.contains(e.target) && !e.target.closest('.settings-dots')) {
       drawer.classList.remove('open');
     }
   });
-// --- Simple native fullscreen (no external library) ---
-const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-function toggleNativeFullscreen() {
-  if (!document.documentElement.requestFullscreen) {
-    addNotification("Fullscreen not supported", "exclamation-triangle");
-    return;
+  // --- FULLSCREEN (clean, no duplicates) ---
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+  function toggleNativeFullscreen() {
+    if (!document.documentElement.requestFullscreen) {
+      addNotification("Fullscreen not supported", "exclamation-triangle");
+      return;
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+        .then(() => addNotification("Exited fullscreen", "compress"))
+        .catch(() => addNotification("Exit failed", "exclamation-triangle"));
+    } else {
+      document.documentElement.requestFullscreen()
+        .then(() => addNotification("Entered fullscreen", "expand"))
+        .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
+    }
   }
 
-  if (document.fullscreenElement) {
-    document.exitFullscreen()
-      .then(() => addNotification("Exited fullscreen", "compress"))
-      .catch(err => addNotification("Exit failed", "exclamation-triangle"));
-  } else {
-    document.documentElement.requestFullscreen()
-      .then(() => addNotification("Entered fullscreen", "expand"))
-      .catch(err => addNotification("Fullscreen failed", "exclamation-triangle"));
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', toggleNativeFullscreen);
   }
-}
 
-if (fullscreenBtn) {
-  fullscreenBtn.addEventListener('click', toggleNativeFullscreen);
-}
-
-// Optional: listen for fullscreen change to update icon (if you want)
-document.addEventListener('fullscreenchange', () => {
-  if (document.fullscreenElement) {
-    // Optionally change button icon to "compress"
-    const icon = fullscreenBtn?.querySelector('i');
-    if (icon) icon.className = 'fas fa-compress';
-  } else {
-    const icon = fullscreenBtn?.querySelector('i');
-    if (icon) icon.className = 'fas fa-expand';
-  }
-});
+  // Update icon when fullscreen changes
+  document.addEventListener('fullscreenchange', () => {
+    if (fullscreenBtn) {
+      const icon = fullscreenBtn.querySelector('i');
+      if (icon) {
+        icon.className = document.fullscreenElement ? 'fas fa-compress' : 'fas fa-expand';
+      }
+    }
+  });
   // --- SCROLL NOTIFICATION (reusable toast, throttled) ---
   let lastScrollTop = 0;
   let scrollToastTimer = null;
@@ -1158,8 +1098,25 @@ function init() {
   renderDots();
   
   // Fullscreen banner (unchanged)
-    // Only show the banner if fullscreen is supported and the user has not permanently dismissed it
-    const fullscreenSupported = !!document.documentElement.requestFullscreen;
+    // Real fullscreen support test (works around iOS fake support)
+    let fullscreenSupported = false;
+    try {
+      // Check if the method exists and is not a no-op on iOS
+      const testElem = document.documentElement;
+      if (testElem.requestFullscreen) {
+        // iOS returns a promise that rejects if not user-initiated – we just check existence
+        // Additional check: on iOS, entering fullscreen requires a user gesture but we can still use it.
+        // However, we also check if the browser is iOS and warn accordingly.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+          // iOS supports fullscreen but only after user gesture; we'll keep the button but handle failures
+          fullscreenSupported = true;
+        } else {
+          fullscreenSupported = true;
+        }
+      }
+    } catch(e) { fullscreenSupported = false; }
+    
     const bannerPermanentlyDismissed = localStorage.getItem('fullscreenBannerDismissed') === 'true';
     
     if (fullscreenSupported && !bannerPermanentlyDismissed) {
@@ -1210,11 +1167,16 @@ function init() {
           document.documentElement.requestFullscreen()
             .then(() => {
               addNotification("Fullscreen mode active", "expand");
-              permanentlyDismiss(); // also remove banner and remember
+              permanentlyDismiss();
             })
-            .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
+            .catch((err) => {
+              console.warn("Fullscreen request failed", err);
+              addNotification("Fullscreen not available on this device", "exclamation-triangle");
+              permanentlyDismiss(); // also dismiss banner forever
+            });
         } else {
-          addNotification("Not supported", "exclamation-triangle");
+          addNotification("Fullscreen not supported", "exclamation-triangle");
+          permanentlyDismiss();
         }
       });
       
@@ -1223,6 +1185,9 @@ function init() {
       });
       
       document.body.appendChild(banner);
+    } else if (!fullscreenSupported && !bannerPermanentlyDismissed) {
+      // If fullscreen is not supported at all, store the flag to never show again
+      localStorage.setItem('fullscreenBannerDismissed', 'true');
     }
 }
   init();
