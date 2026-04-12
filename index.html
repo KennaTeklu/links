@@ -341,7 +341,46 @@ function renderNotificationList() {
 
   function uid() { return Date.now() + '-' + Math.random().toString(36).substr(2, 8); }
   function getDomainFromUrl(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e) { return "website"; } }
-  function faviconUrl(url) { try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { return ""; } }
+ async function getBestFavicon(url) {
+  try {
+    const domain = new URL(url).hostname;
+    
+    // Priority list of favicon sources (highest quality first)
+    const sources = [
+      // 1. DuckDuckGo's favicon service (often better quality than Google)
+      `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+      // 2. Google S2 (reliable fallback)
+      `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+      // 3. Icons8 (alternative)
+      `https://img.icons8.com/color/96/${domain}.png`,
+      // 4. Default favicon.ico location
+      `https://${domain}/favicon.ico`
+    ];
+    
+    // Try each source in order, return first that loads successfully
+    for (const src of sources) {
+      const isValid = await testImage(src);
+      if (isValid) return src;
+    }
+    
+    // Ultimate fallback: Google S2 with default domain
+    return `https://www.google.com/s2/favicons?domain=default.com&sz=64`;
+  } catch (e) {
+    return `https://www.google.com/s2/favicons?domain=default.com&sz=64`;
+  }
+}
+
+// Helper: test if an image URL loads successfully
+function testImage(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+    // Timeout after 2 seconds
+    setTimeout(() => resolve(false), 2000);
+  });
+}
 
 async function addNewApp(link, customName = null) {
   // 1. Input validation
@@ -381,11 +420,8 @@ async function addNewApp(link, customName = null) {
   if (!appName) appName = "Website";
   appName = appName.substring(0, 24);
 
-  // 6. Fetch favicon with fallback chain
-  let favicon = faviconUrl(validUrl.href);
-  // Test if favicon loads (optional: we can try to preload, but we'll rely on img onerror later)
-  // For robustness, also add a fallback to a default icon
-  const finalFavicon = favicon || "https://www.google.com/s2/favicons?domain=default.com&sz=64";
+   // 6. Fetch favicon with robust fallback chain
+  const finalFavicon = await getBestFavicon(validUrl.href);
 
   // 7. Create new app object
   const newApp = {
@@ -612,12 +648,88 @@ function renderCurrentPage() {
       
       // Click handler (async, non-blocking)
       tile.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const url = prompt("Enter website URL (https://...):", "https://");
-        if (url && url.trim()) {
-          await addNewApp(url.trim());
-        }
-      });
+  e.stopPropagation();
+
+  // Create modal overlay (fullscreen‑safe)
+  const modalOverlay = document.createElement('div');
+  modalOverlay.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  `;
+
+  const modalBox = document.createElement('div');
+  modalBox.style.cssText = `
+    background: #1e2129;
+    border-radius: 32px;
+    padding: 24px;
+    width: 280px;
+    max-width: 80vw;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  `;
+
+  modalBox.innerHTML = `
+    <h3 style="margin-bottom: 16px; font-size: 18px;">Add website</h3>
+    <input type="text" id="modalUrlInput" placeholder="https://example.com" style="
+      width: 100%;
+      padding: 12px;
+      border-radius: 30px;
+      border: none;
+      background: #2c2f36;
+      color: white;
+      font-size: 14px;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+    " autofocus>
+    <div style="display: flex; gap: 12px; justify-content: center;">
+      <button id="modalConfirmBtn" style="
+        background: #4c6ef5;
+        border: none;
+        color: white;
+        padding: 8px 24px;
+        border-radius: 30px;
+        font-weight: bold;
+        cursor: pointer;
+      ">Add</button>
+      <button id="modalCancelBtn" style="
+        background: transparent;
+        border: 1px solid #aaa;
+        color: #ddd;
+        padding: 8px 24px;
+        border-radius: 30px;
+        cursor: pointer;
+      ">Cancel</button>
+    </div>
+  `;
+
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+
+  const input = modalBox.querySelector('#modalUrlInput');
+  const confirmBtn = modalBox.querySelector('#modalConfirmBtn');
+  const cancelBtn = modalBox.querySelector('#modalCancelBtn');
+
+  const closeModal = () => modalOverlay.remove();
+
+  confirmBtn.addEventListener('click', async () => {
+    let url = input.value.trim();
+    closeModal();
+    if (url) {
+      await addNewApp(url);
+    }
+  });
+
+  cancelBtn.addEventListener('click', closeModal);
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') confirmBtn.click();
+  });
+});
       
       fragment.appendChild(tile);
     } else {
