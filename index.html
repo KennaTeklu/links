@@ -927,7 +927,66 @@ document.addEventListener('fullscreenchange', () => {
     recalcPagination();
     renderCurrentPage();
     renderDots();
-    addNotification("Tap + ", "rocket");
+    if (!sessionStorage.getItem('fullscreenPromptShown')) {
+      const banner = document.createElement('div');
+      banner.id = 'fullscreenPromptBanner';
+      banner.innerHTML = `
+        <span>✨ Go fullscreen for best experience</span>
+        <button id="fsBannerBtn">Fullscreen</button>
+        <button id="dismissBannerBtn" style="background:none; border:none; color:#aaa; font-size:18px;">✕</button>
+      `;
+      Object.assign(banner.style, {
+        position: 'fixed',
+        bottom: '80px',
+        left: '16px',
+        right: '16px',
+        background: '#2c2f36e6',
+        backdropFilter: 'blur(12px)',
+        padding: '12px 16px',
+        borderRadius: '30px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        zIndex: '250',
+        fontSize: '14px',
+        fontWeight: '500'
+      });
+      
+      const fsBtn = banner.querySelector('#fsBannerBtn');
+      const dismissBtn = banner.querySelector('#dismissBannerBtn');
+      Object.assign(fsBtn.style, {
+        background: '#4c6ef5',
+        border: 'none',
+        color: 'white',
+        padding: '6px 16px',
+        borderRadius: '30px',
+        fontWeight: 'bold',
+        cursor: 'pointer'
+      });
+      
+      fsBtn.addEventListener('click', () => {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen()
+            .then(() => {
+              addNotification("Fullscreen mode active", "expand");
+              banner.remove();
+              sessionStorage.setItem('fullscreenPromptShown', 'true');
+            })
+            .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
+        } else {
+          addNotification("Not supported", "exclamation-triangle");
+        }
+      });
+      
+      dismissBtn.addEventListener('click', () => {
+        banner.remove();
+        sessionStorage.setItem('fullscreenPromptShown', 'true');
+      });
+      
+      document.body.appendChild(banner);
+      sessionStorage.setItem('fullscreenPromptShown', 'false'); // ensure it shows once
+    }
   }
   init();
 </script>
