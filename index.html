@@ -148,9 +148,10 @@
       .app-grid.small { grid-template-columns: repeat(4, 1fr); }
     }
 /* When in fullscreen mode, make the root container take up the whole view */
-.fullscreen-app:fullscreen {
+body:fullscreen {
     width: 100vw;
     height: 100vh;
+    background: #0a0c12; /* optional: keeps background consistent */
 }
 /* Add any other fullscreen-specific styles here */
   </style>
@@ -168,6 +169,7 @@
 
 <div class="settings-dots" id="dotsMenu">⋮</div>
 <div class="menu-dropdown" id="viewMenu">
+  <div class="menu-item" id="fullscreenBtn"><i class="fas fa-expand"></i> Fullscreen</div>
   <div class="menu-item" data-view="large"><i class="fas fa-expand"></i> Large</div>
   <div class="menu-item" data-view="medium"><i class="fas fa-th"></i> Medium</div>
   <div class="menu-item" data-view="small"><i class="fas fa-th-large"></i> Small</div>
@@ -273,13 +275,9 @@ function toggleFullscreen() {
         }
     } else {
         // Request fullscreen on the document's root element
-        screenfull.request(document.documentElement).then(() => {
-            // After entering fullscreen, lock the orientation (optional)
-            if (screen.orientation && screen.orientation.lock) {
-                screen.orientation.lock('landscape').catch((error) => {
-                    console.warn(`Orientation lock failed: ${error}`);
-                });
-            }
+        screenfull.request(document.documentElement).catch((error) => {
+            console.error(`Fullscreen request failed: ${error}`);
+            addNotification("Failed to enter fullscreen mode", "exclamation-triangle");
         }).catch((error) => {
             console.error(`Fullscreen request failed: ${error}`);
             addNotification("Failed to enter fullscreen mode", "exclamation-triangle");
@@ -893,7 +891,7 @@ function renderCurrentPage() {
     recalcPagination();
     renderCurrentPage();
     renderDots();
-    addNotification("✨ Ready! Tap + or swipe down", "rocket");
+    addNotification("Tap +", "rocket");
   }
   init();
 </script>
