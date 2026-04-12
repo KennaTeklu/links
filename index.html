@@ -1039,26 +1039,99 @@ document.addEventListener('fullscreenchange', () => {
   // Battery & time (unchanged, but improved)
   function updateTime() { document.getElementById('liveTime').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
   setInterval(updateTime, 1000); updateTime();
-  async function initBattery() {
-    if ('getBattery' in navigator) {
-      try {
-        const b = await navigator.getBattery();
-        const update = () => {
-          const p = Math.round(b.level*100);
-          document.getElementById('batteryPercent').textContent = p+'%';
-          const fill = document.getElementById('batteryFill');
-          fill.style.width = p+'%';
-          if (p<=15) fill.style.backgroundColor = '#ff3b30';
-          else if (p>=99) fill.style.backgroundColor = '#34c759';
-          else fill.style.backgroundColor = 'white';
-          if (p<=15 && !b.charging) addNotification("⚠️ Low battery", "battery-quarter");
-        };
-        update();
-        b.addEventListener('levelchange', update);
-      } catch(e) { fallbackBattery(); }
-    } else fallbackBattery();
+// Battery state
+let batteryClickAttempts = 0;
+let batteryRealLevel = null;
+
+async function initBattery() {
+  // First, set a click handler on the battery area
+  const batteryArea = document.querySelector('.battery-area');
+  if (batteryArea && !batteryArea.hasAttribute('data-click-set')) {
+    batteryArea.setAttribute('data-click-set', 'true');
+    batteryArea.style.cursor = 'pointer';
+    batteryArea.title = 'Tap to try reading battery (Brave may block it)';
+    batteryArea.addEventListener('click', (e) => {
+      e.stopPropagation();
+      attemptBatteryAccess(true); // user triggered
+    });
   }
-  function fallbackBattery() { document.getElementById('batteryFill').style.width='87%'; document.getElementById('batteryPercent').textContent='87%'; }
+  
+  // Try once automatically, but do not show error on first silent attempt
+  await attemptBatteryAccess(false);
+}
+
+async function attemptBatteryAccess(showUserMessage = false) {
+  if (!('getBattery' in navigator)) {
+    if (showUserMessage) {
+      addNotification("Battery API not supported by this browser", "exclamation-triangle");
+    }
+    fallbackBattery(true);
+    return;
+  }
+  
+  try {
+    const b = await navigator.getBattery();
+    // Success – we have real battery data
+    batteryRealLevel = b.level;
+    const update = () => {
+      const p = Math.round(b.level * 100);
+      document.getElementById('batteryPercent').textContent = p + '%';
+      const fill = document.getElementById('batteryFill');
+      fill.style.width = p + '%';
+      if (p <= 15) fill.style.backgroundColor = '#ff3b30';
+      else if (p >= 99) fill.style.backgroundColor = '#34c759';
+      else fill.style.backgroundColor = 'white';
+      if (p <= 15 && !b.charging) addNotification("⚠️ Low battery", "battery-quarter");
+    };
+    update();
+    b.addEventListener('levelchange', update);
+    
+    // Remove any "blocked" indicator
+    const batteryArea = document.querySelector('.battery-area');
+    if (batteryArea) batteryArea.title = 'Battery level (real)';
+    if (showUserMessage) addNotification("Battery access granted ✓", "check-circle");
+  } catch (err) {
+    // API exists but was blocked (Brave, Firefox, etc.)
+    if (showUserMessage) {
+      addNotification("Battery access blocked by browser (Brave Shields, etc.)", "exclamation-triangle");
+      // Additional helpful note
+      setTimeout(() => {
+        addNotification("Try disabling Shields for this site (click lion icon)", "info-circle");
+      }, 3000);
+    }
+    fallbackBattery(showUserMessage);
+  }
+}
+
+function fallbackBattery(fromUserClick = false) {
+  // Simulate a realistic battery level (75%) but add a note
+  const simulatedPercent = 75;
+  document.getElementById('batteryFill').style.width = simulatedPercent + '%';
+  document.getElementById('batteryPercent').textContent = simulatedPercent + '%';
+  
+  const batteryArea = document.querySelector('.battery-area');
+  if (batteryArea) {
+    if (fromUserClick) {
+      batteryArea.title = 'Battery simulated – browser blocks real access';
+    } else {
+      batteryArea.title = 'Tap to try reading real battery';
+    }
+  }
+  
+  // Optional: show a subtle indicator that it's simulated (small dot)
+  let simIndicator = document.getElementById('batterySimIndicator');
+  if (!simIndicator && fromUserClick) {
+    simIndicator = document.createElement('span');
+    simIndicator.id = 'batterySimIndicator';
+    simIndicator.textContent = '⚡';
+    simIndicator.style.fontSize = '10px';
+    simIndicator.style.marginLeft = '4px';
+    simIndicator.style.opacity = '0.6';
+    simIndicator.title = 'Simulated battery level';
+    const batteryArea = document.querySelector('.battery-area');
+    if (batteryArea) batteryArea.appendChild(simIndicator);
+  }
+}
   initBattery();
 
   // Auto-hide status bar on scroll (three dots stay visible)
@@ -1085,66 +1158,72 @@ function init() {
   renderDots();
   
   // Fullscreen banner (unchanged)
-  if (!sessionStorage.getItem('fullscreenPromptShown')) {
-    const banner = document.createElement('div');
-    banner.id = 'fullscreenPromptBanner';
-    banner.innerHTML = `
-      <span>✨ Go fullscreen for best experience</span>
-      <button id="fsBannerBtn">Fullscreen</button>
-      <button id="dismissBannerBtn" style="background:none; border:none; color:#aaa; font-size:18px;">✕</button>
-    `;
-    Object.assign(banner.style, {
-      position: 'fixed',
-      bottom: '80px',
-      left: '16px',
-      right: '16px',
-      background: '#2c2f36e6',
-      backdropFilter: 'blur(12px)',
-      padding: '12px 16px',
-      borderRadius: '30px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '12px',
-      zIndex: '250',
-      fontSize: '14px',
-      fontWeight: '500'
-    });
+    // Only show the banner if fullscreen is supported and the user has not permanently dismissed it
+    const fullscreenSupported = !!document.documentElement.requestFullscreen;
+    const bannerPermanentlyDismissed = localStorage.getItem('fullscreenBannerDismissed') === 'true';
     
-    const fsBtn = banner.querySelector('#fsBannerBtn');
-    const dismissBtn = banner.querySelector('#dismissBannerBtn');
-    Object.assign(fsBtn.style, {
-      background: '#4c6ef5',
-      border: 'none',
-      color: 'white',
-      padding: '6px 16px',
-      borderRadius: '30px',
-      fontWeight: 'bold',
-      cursor: 'pointer'
-    });
-    
-    fsBtn.addEventListener('click', () => {
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen()
-          .then(() => {
-            addNotification("Fullscreen mode active", "expand");
-            banner.remove();
-            sessionStorage.setItem('fullscreenPromptShown', 'true');
-          })
-          .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
-      } else {
-        addNotification("Not supported", "exclamation-triangle");
-      }
-    });
-    
-    dismissBtn.addEventListener('click', () => {
-      banner.remove();
-      sessionStorage.setItem('fullscreenPromptShown', 'true');
-    });
-    
-    document.body.appendChild(banner);
-    sessionStorage.setItem('fullscreenPromptShown', 'false');
-  }
+    if (fullscreenSupported && !bannerPermanentlyDismissed) {
+      const banner = document.createElement('div');
+      banner.id = 'fullscreenPromptBanner';
+      banner.innerHTML = `
+        <span>✨ Go fullscreen for best experience</span>
+        <button id="fsBannerBtn">Fullscreen</button>
+        <button id="dismissBannerBtn" style="background:none; border:none; color:#aaa; font-size:18px;">✕</button>
+      `;
+      Object.assign(banner.style, {
+        position: 'fixed',
+        bottom: '80px',
+        left: '16px',
+        right: '16px',
+        background: '#2c2f36e6',
+        backdropFilter: 'blur(12px)',
+        padding: '12px 16px',
+        borderRadius: '30px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        zIndex: '250',
+        fontSize: '14px',
+        fontWeight: '500'
+      });
+      
+      const fsBtn = banner.querySelector('#fsBannerBtn');
+      const dismissBtn = banner.querySelector('#dismissBannerBtn');
+      Object.assign(fsBtn.style, {
+        background: '#4c6ef5',
+        border: 'none',
+        color: 'white',
+        padding: '6px 16px',
+        borderRadius: '30px',
+        fontWeight: 'bold',
+        cursor: 'pointer'
+      });
+      
+      const permanentlyDismiss = () => {
+        banner.remove();
+        localStorage.setItem('fullscreenBannerDismissed', 'true');
+      };
+      
+      fsBtn.addEventListener('click', () => {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen()
+            .then(() => {
+              addNotification("Fullscreen mode active", "expand");
+              permanentlyDismiss(); // also remove banner and remember
+            })
+            .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
+        } else {
+          addNotification("Not supported", "exclamation-triangle");
+        }
+      });
+      
+      dismissBtn.addEventListener('click', () => {
+        permanentlyDismiss();
+      });
+      
+      document.body.appendChild(banner);
+    }
 }
   init();
 </script>
