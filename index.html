@@ -442,6 +442,7 @@ async function addNewApp(link, customName = null) {
 
   // 9. Ensure plus button is at the end (in case something shifted)
   ensurePlusButton();
+  saveAppsToLocalStorage();
 
   // 10. Recalculate pagination and navigate to the page containing the new app
   recalcPagination();
@@ -462,6 +463,45 @@ async function addNewApp(link, customName = null) {
       if (idx !== apps.length-1) { const plus = apps.splice(idx,1)[0]; apps.push(plus); }
     }
   }
+// Save apps to localStorage with error handling
+function saveAppsToLocalStorage() {
+  try {
+    const dataToStore = apps.filter(app => !app.isAddButton); // don't save the plus button
+    localStorage.setItem('phone_home_apps', JSON.stringify(dataToStore));
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      addNotification("Storage full – cannot save new apps", "exclamation-triangle");
+    } else {
+      console.error("Save failed", e);
+    }
+  }
+}
+
+// Load apps from localStorage, validate, and restore
+function loadAppsFromLocalStorage() {
+  const stored = localStorage.getItem('phone_home_apps');
+  if (!stored) return []; // no saved data
+  
+  try {
+    const parsed = JSON.parse(stored);
+    // Basic validation: must be an array
+    if (!Array.isArray(parsed)) return [];
+    
+    // Validate each app has required fields
+    const validApps = parsed.filter(app => 
+      app && typeof app === 'object' &&
+      typeof app.id === 'string' &&
+      typeof app.url === 'string' &&
+      typeof app.name === 'string' &&
+      typeof app.favicon === 'string'
+    );
+    return validApps;
+  } catch (e) {
+    console.error("Failed to load apps", e);
+    addNotification("Could not restore saved apps – starting fresh", "exclamation-triangle");
+    return [];
+  }
+}
 
 // Global variable to store pending undo (only one at a time)
 let pendingDeletion = null;
@@ -495,6 +535,7 @@ function deleteAppById(id) {
   // 5. Perform deletion
   apps.splice(idx, 1);
   ensurePlusButton();        // reorder plus to end if needed
+  saveAppsToLocalStorage();
   recalcPagination();       // update page count
 
   // 6. Adjust current page if necessary
@@ -1031,75 +1072,80 @@ document.addEventListener('fullscreenchange', () => {
   });
 
   // Initialise
-  function init() {
-    apps = [];
-    ensurePlusButton();
-    const savedView = localStorage.getItem('appViewMode');
-    if (savedView && ['large','medium','small','list','detail'].includes(savedView)) viewMode = savedView;
-    recalcPagination();
-    renderCurrentPage();
-    renderDots();
-    if (!sessionStorage.getItem('fullscreenPromptShown')) {
-      const banner = document.createElement('div');
-      banner.id = 'fullscreenPromptBanner';
-      banner.innerHTML = `
-        <span>✨ Go fullscreen for best experience</span>
-        <button id="fsBannerBtn">Fullscreen</button>
-        <button id="dismissBannerBtn" style="background:none; border:none; color:#aaa; font-size:18px;">✕</button>
-      `;
-      Object.assign(banner.style, {
-        position: 'fixed',
-        bottom: '80px',
-        left: '16px',
-        right: '16px',
-        background: '#2c2f36e6',
-        backdropFilter: 'blur(12px)',
-        padding: '12px 16px',
-        borderRadius: '30px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '12px',
-        zIndex: '250',
-        fontSize: '14px',
-        fontWeight: '500'
-      });
-      
-      const fsBtn = banner.querySelector('#fsBannerBtn');
-      const dismissBtn = banner.querySelector('#dismissBannerBtn');
-      Object.assign(fsBtn.style, {
-        background: '#4c6ef5',
-        border: 'none',
-        color: 'white',
-        padding: '6px 16px',
-        borderRadius: '30px',
-        fontWeight: 'bold',
-        cursor: 'pointer'
-      });
-      
-      fsBtn.addEventListener('click', () => {
-        if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen()
-            .then(() => {
-              addNotification("Fullscreen mode active", "expand");
-              banner.remove();
-              sessionStorage.setItem('fullscreenPromptShown', 'true');
-            })
-            .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
-        } else {
-          addNotification("Not supported", "exclamation-triangle");
-        }
-      });
-      
-      dismissBtn.addEventListener('click', () => {
-        banner.remove();
-        sessionStorage.setItem('fullscreenPromptShown', 'true');
-      });
-      
-      document.body.appendChild(banner);
-      sessionStorage.setItem('fullscreenPromptShown', 'false'); // ensure it shows once
-    }
+function init() {
+  // Load previously saved apps (without plus button)
+  const savedApps = loadAppsFromLocalStorage();
+  apps = savedApps;
+  ensurePlusButton(); // adds the plus button at the end
+  
+  const savedView = localStorage.getItem('appViewMode');
+  if (savedView && ['large','medium','small','list','detail'].includes(savedView)) viewMode = savedView;
+  recalcPagination();
+  renderCurrentPage();
+  renderDots();
+  
+  // Fullscreen banner (unchanged)
+  if (!sessionStorage.getItem('fullscreenPromptShown')) {
+    const banner = document.createElement('div');
+    banner.id = 'fullscreenPromptBanner';
+    banner.innerHTML = `
+      <span>✨ Go fullscreen for best experience</span>
+      <button id="fsBannerBtn">Fullscreen</button>
+      <button id="dismissBannerBtn" style="background:none; border:none; color:#aaa; font-size:18px;">✕</button>
+    `;
+    Object.assign(banner.style, {
+      position: 'fixed',
+      bottom: '80px',
+      left: '16px',
+      right: '16px',
+      background: '#2c2f36e6',
+      backdropFilter: 'blur(12px)',
+      padding: '12px 16px',
+      borderRadius: '30px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '12px',
+      zIndex: '250',
+      fontSize: '14px',
+      fontWeight: '500'
+    });
+    
+    const fsBtn = banner.querySelector('#fsBannerBtn');
+    const dismissBtn = banner.querySelector('#dismissBannerBtn');
+    Object.assign(fsBtn.style, {
+      background: '#4c6ef5',
+      border: 'none',
+      color: 'white',
+      padding: '6px 16px',
+      borderRadius: '30px',
+      fontWeight: 'bold',
+      cursor: 'pointer'
+    });
+    
+    fsBtn.addEventListener('click', () => {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen()
+          .then(() => {
+            addNotification("Fullscreen mode active", "expand");
+            banner.remove();
+            sessionStorage.setItem('fullscreenPromptShown', 'true');
+          })
+          .catch(() => addNotification("Fullscreen failed", "exclamation-triangle"));
+      } else {
+        addNotification("Not supported", "exclamation-triangle");
+      }
+    });
+    
+    dismissBtn.addEventListener('click', () => {
+      banner.remove();
+      sessionStorage.setItem('fullscreenPromptShown', 'true');
+    });
+    
+    document.body.appendChild(banner);
+    sessionStorage.setItem('fullscreenPromptShown', 'false');
   }
+}
   init();
 </script>
 </body>
