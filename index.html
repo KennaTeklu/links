@@ -160,6 +160,9 @@
 
 <div class="settings-dots" id="dotsMenu">⋮</div>
 <div class="menu-dropdown" id="viewMenu">
+  <div class="menu-item" id="fullscreenBtn">
+    <i class="fas fa-expand"></i> Fullscreen
+  </div>
   <div class="menu-item" data-view="large"><i class="fas fa-expand"></i> Large</div>
   <div class="menu-item" data-view="medium"><i class="fas fa-th"></i> Medium</div>
   <div class="menu-item" data-view="small"><i class="fas fa-th-large"></i> Small</div>
@@ -715,7 +718,41 @@ function renderCurrentPage() {
       drawer.classList.remove('open');
     }
   });
+// --- Simple native fullscreen (no external library) ---
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 
+function toggleNativeFullscreen() {
+  if (!document.documentElement.requestFullscreen) {
+    addNotification("Fullscreen not supported", "exclamation-triangle");
+    return;
+  }
+
+  if (document.fullscreenElement) {
+    document.exitFullscreen()
+      .then(() => addNotification("Exited fullscreen", "compress"))
+      .catch(err => addNotification("Exit failed", "exclamation-triangle"));
+  } else {
+    document.documentElement.requestFullscreen()
+      .then(() => addNotification("Entered fullscreen", "expand"))
+      .catch(err => addNotification("Fullscreen failed", "exclamation-triangle"));
+  }
+}
+
+if (fullscreenBtn) {
+  fullscreenBtn.addEventListener('click', toggleNativeFullscreen);
+}
+
+// Optional: listen for fullscreen change to update icon (if you want)
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) {
+    // Optionally change button icon to "compress"
+    const icon = fullscreenBtn?.querySelector('i');
+    if (icon) icon.className = 'fas fa-compress';
+  } else {
+    const icon = fullscreenBtn?.querySelector('i');
+    if (icon) icon.className = 'fas fa-expand';
+  }
+});
   // --- SCROLL NOTIFICATION (reusable toast, throttled) ---
   let lastScrollTop = 0;
   let scrollToastTimer = null;
