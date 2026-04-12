@@ -158,6 +158,34 @@
   </div>
 </div>
 
+<div id="fullscreenPrompt" style="
+  position: fixed;
+  top: 60px;
+  left: 16px;
+  right: 16px;
+  background: #1e2129e6;
+  backdrop-filter: blur(20px);
+  padding: 12px 16px;
+  border-radius: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  z-index: 150;
+  transition: opacity 0.3s;
+">
+  <span> Enjoy fullscreen mode. Tap the button below.</span>
+  <button id="welcomeFullscreenBtn" style="
+    background: #4c6ef5;
+    border: none;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-weight: bold;
+    cursor: pointer;
+  ">Fullscreen</button>
+</div>
+
 <div class="settings-dots" id="dotsMenu">⋮</div>
 <div class="menu-dropdown" id="viewMenu">
   <div class="menu-item" id="fullscreenBtn">
@@ -233,7 +261,32 @@ function addNotification(msg, icon = "info-circle") {
   }, 5000);
   notificationTimeouts.set(id, timeoutId);
 }
+// Show fullscreen prompt only once per session
+if (!sessionStorage.getItem('fullscreenPromptShown')) {
+  const promptDiv = document.getElementById('fullscreenPrompt');
+  if (promptDiv) {
+    promptDiv.style.display = 'flex';
+    sessionStorage.setItem('fullscreenPromptShown', 'true');
+  }
+}
 
+const welcomeBtn = document.getElementById('welcomeFullscreenBtn');
+if (welcomeBtn) {
+  welcomeBtn.addEventListener('click', () => {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen()
+        .then(() => {
+          addNotification("Fullscreen mode active", "expand");
+          // Hide prompt after entering fullscreen
+          const promptDiv = document.getElementById('fullscreenPrompt');
+          if (promptDiv) promptDiv.style.display = 'none';
+        })
+        .catch(err => addNotification("Fullscreen failed", "exclamation-triangle"));
+    } else {
+      addNotification("Fullscreen not supported", "exclamation-triangle");
+    }
+  });
+}
 // Helper: floating toast (auto‑removes after 3s)
 function showToastNotification(msg, icon) {
   let toast = document.getElementById('tempToast');
