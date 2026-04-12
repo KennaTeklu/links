@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FullScreen Home · Fixed Notifications & Menu</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <link rel="manifest" href="/manifest.json">
-  <script src="https://cdn.jsdelivr.net/npm/screenfull@6.0.2/dist/screenfull.min.js"></script>
   <style>
     /* (same base styles as before, but with updated .settings-dots position) */
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
@@ -147,13 +145,6 @@
       .app-grid.medium { grid-template-columns: repeat(3, 1fr); }
       .app-grid.small { grid-template-columns: repeat(4, 1fr); }
     }
-/* When in fullscreen mode, make the root container take up the whole view */
-body:fullscreen {
-    width: 100vw;
-    height: 100vh;
-    background: #0a0c12; /* optional: keeps background consistent */
-}
-/* Add any other fullscreen-specific styles here */
   </style>
 </head>
 <body>
@@ -169,7 +160,6 @@ body:fullscreen {
 
 <div class="settings-dots" id="dotsMenu">⋮</div>
 <div class="menu-dropdown" id="viewMenu">
-  <div class="menu-item" id="fullscreenBtn"><i class="fas fa-expand"></i> Fullscreen</div>
   <div class="menu-item" data-view="large"><i class="fas fa-expand"></i> Large</div>
   <div class="menu-item" data-view="medium"><i class="fas fa-th"></i> Medium</div>
   <div class="menu-item" data-view="small"><i class="fas fa-th-large"></i> Small</div>
@@ -257,51 +247,7 @@ function showToastNotification(msg, icon) {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3000);
 }
-// Assuming you have a button with id="fullscreenBtn" in your HTML
-const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-function toggleFullscreen() {
-    if (!screenfull.isEnabled) {
-        console.warn("Fullscreen API is not enabled in this browser.");
-        addNotification("Fullscreen not supported by your browser", "exclamation-triangle");
-        return;
-    }
-
-    if (screenfull.isFullscreen) {
-        // If already fullscreen, exit
-        screenfull.exit();
-        if (screen.orientation && screen.orientation.unlock) {
-            screen.orientation.unlock(); // Unlock orientation when exiting
-        }
-    } else {
-        // Request fullscreen on the document's root element
-        screenfull.request(document.documentElement).catch((error) => {
-            console.error(`Fullscreen request failed: ${error}`);
-            addNotification("Failed to enter fullscreen mode", "exclamation-triangle");
-        }).catch((error) => {
-            console.error(`Fullscreen request failed: ${error}`);
-            addNotification("Failed to enter fullscreen mode", "exclamation-triangle");
-        });
-    }
-}
-
-// Attach the event listener to your button
-if (fullscreenBtn) {
-    fullscreenBtn.addEventListener('click', toggleFullscreen);
-}
-
-// Listen for fullscreen change events to update the UI if needed
-if (screenfull.isEnabled) {
-    screenfull.on('change', () => {
-        if (screenfull.isFullscreen) {
-            addNotification("Entered Fullscreen Mode", "expand");
-            // Optionally hide your custom status bar here
-        } else {
-            addNotification("Exited Fullscreen Mode", "compress");
-            // Optionally show your custom status bar here
-        }
-    });
-}
 function renderNotificationList() {
   const container = document.getElementById("notifList");
   if (!container) return;
@@ -891,7 +837,7 @@ function renderCurrentPage() {
     recalcPagination();
     renderCurrentPage();
     renderDots();
-    addNotification("Tap +", "rocket");
+    addNotification("Tap + ", "rocket");
   }
   init();
 </script>
