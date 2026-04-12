@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>FullScreen Home · Fixed Notifications & Menu</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    /* (same base styles as before, but with updated .settings-dots position) */
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+    body {
+      background: #0a0c12;
+      font-family: system-ui, -apple-system, 'Inter', sans-serif;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      color: white;
+    }
+    .status-bar {
+      padding: 12px 20px 6px 20px;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(12px);
+      display: flex;
+      justify-content: space-between;
+      font-size: 15px;
+      font-weight: 590;
+      flex-shrink: 0;
+      z-index: 20;
+      transition: transform 0.3s;
+    }
+    .status-bar.hide { transform: translateY(-100%); }
+    .time { font-weight: 600; }
+    .battery-area { display: flex; align-items: center; gap: 6px; }
+    .battery-symbol {
+      width: 22px; height: 11px; border: 1px solid white; border-radius: 3px;
+      position: relative; background: rgba(255,255,255,0.2);
+    }
+    .battery-symbol::after {
+      content: ''; position: absolute; right: -3px; top: 2px;
+      width: 2px; height: 4px; background: white; border-radius: 1px;
+    }
+    .battery-fill {
+      height: 100%; width: 100%; background: white; border-radius: 2px;
+      transition: width 0.2s, background-color 0.2s;
+    }
+    /* Fixed: three-dot menu below status bar */
+    .settings-dots {
+      position: fixed;
+      top: 48px;  /* below status bar approx */
+      right: 16px;
+      z-index: 100;
+      background: rgba(20, 22, 27, 0.8);
+      backdrop-filter: blur(12px);
+      width: 36px;
+      height: 36px;
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      cursor: pointer;
+      color: white;
+      transition: 0.1s;
+    }
+    .settings-dots:active { transform: scale(0.92); background: rgba(255,255,255,0.2); }
+    .menu-dropdown {
+      position: fixed;
+      top: 90px;
+      right: 16px;
+      background: #1e2129e6;
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      padding: 8px 0;
+      min-width: 150px;
+      display: none;
+      flex-direction: column;
+      z-index: 101;
+      border: 0.5px solid rgba(255,255,255,0.2);
+    }
+    .menu-dropdown.show { display: flex; }
+    .menu-item {
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      color: #eee;
+      white-space: nowrap;
+    }
+    .menu-item i { width: 24px; margin-right: 8px; }
+    .menu-item:hover { background: rgba(255,255,255,0.15); }
+    /* Notification drawer - reversible */
+    .notification-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(20, 22, 30, 0.96);
+      backdrop-filter: blur(20px);
+      z-index: 50;
+      transform: translateY(-100%);
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      border-bottom-left-radius: 28px;
+      border-bottom-right-radius: 28px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+      pointer-events: auto;
+    }
+    .notification-drawer.open { transform: translateY(0); }
+    .notif-header { font-weight: 600; margin-bottom: 12px; font-size: 16px; display: flex; gap: 8px; align-items: center; }
+    .notif-list { max-height: 40vh; overflow-y: auto; }
+    .notif-item { padding: 8px 0; border-bottom: 0.5px solid rgba(255,255,255,0.1); font-size: 13px; display: flex; gap: 10px; align-items: center; }
+    /* rest of grid styles same as before */
+    .grid-main { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; touch-action: pan-y pinch-zoom; }
+    .page-viewport { flex: 1; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; padding: 16px 16px 8px 16px; }
+    .app-grid { display: grid; gap: 20px 12px; justify-items: center; align-items: start; transition: all 0.2s; }
+    .app-grid.large { grid-template-columns: repeat(2, minmax(100px, 130px)); }
+    .app-grid.large .app-icon { width: 90px; height: 90px; }
+    .app-grid.large .app-name { font-size: 13px; }
+    .app-grid.medium { grid-template-columns: repeat(4, minmax(70px, 90px)); }
+    .app-grid.medium .app-icon { width: 70px; height: 70px; }
+    .app-grid.medium .app-name { font-size: 11px; }
+    .app-grid.small { grid-template-columns: repeat(6, minmax(60px, 75px)); }
+    .app-grid.small .app-icon { width: 55px; height: 55px; }
+    .app-grid.small .app-name { font-size: 10px; }
+    .app-grid.list { grid-template-columns: 1fr; }
+    .app-grid.list .app-tile { flex-direction: row; justify-content: flex-start; gap: 16px; background: rgba(255,255,255,0.05); padding: 10px 16px; border-radius: 28px; width: 100%; }
+    .app-grid.list .app-icon { width: 48px; height: 48px; margin-bottom: 0; }
+    .app-grid.detail { grid-template-columns: 1fr; }
+    .app-grid.detail .app-tile { flex-direction: row; justify-content: flex-start; gap: 18px; background: rgba(255,255,255,0.08); padding: 16px 20px; border-radius: 32px; width: 100%; }
+    .app-grid.detail .app-icon { width: 64px; height: 64px; }
+    .app-grid.detail .app-name { font-size: 18px; font-weight: 600; }
+    .app-tile { display: flex; flex-direction: column; align-items: center; width: 100%; cursor: pointer; transition: transform 0.1s; position: relative; }
+    .app-tile:active { transform: scale(0.96); }
+    .app-icon { background: rgba(255,255,255,0.1); backdrop-filter: blur(4px); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.2); }
+    .app-icon img { width: 70%; height: 70%; object-fit: contain; border-radius: 14px; }
+    .app-name { font-weight: 500; color: #f0f0f0; text-shadow: 0 1px 2px rgba(0,0,0,0.3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+    .add-tile .app-icon { background: rgba(255,255,255,0.15); border: 2px dashed rgba(255,255,255,0.5); }
+    .add-tile .app-name { color: #ccc; }
+    .dots-container { display: flex; justify-content: center; gap: 10px; padding: 10px 0 18px; flex-shrink: 0; }
+    .dot { width: 8px; height: 8px; background: rgba(255,255,255,0.4); border-radius: 50%; transition: all 0.2s; cursor: pointer; }
+    .dot.active { width: 22px; background: white; border-radius: 10px; }
+    @media (max-width: 500px) {
+      .app-grid.medium { grid-template-columns: repeat(3, 1fr); }
+      .app-grid.small { grid-template-columns: repeat(4, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="status-bar" id="statusBar">
+  <span class="time" id="liveTime">--:--</span>
+  <div class="battery-area">
+    <div class="battery-symbol"><div class="battery-fill" id="batteryFill"></div></div>
+    <span class="battery-percent" id="batteryPercent">100%</span>
+    <i class="fas fa-signal"></i>
+  </div>
+</div>
+
+<div class="settings-dots" id="dotsMenu">⋮</div>
+<div class="menu-dropdown" id="viewMenu">
+  <div class="menu-item" data-view="large"><i class="fas fa-expand"></i> Large</div>
+  <div class="menu-item" data-view="medium"><i class="fas fa-th"></i> Medium</div>
+  <div class="menu-item" data-view="small"><i class="fas fa-th-large"></i> Small</div>
+  <div class="menu-item" data-view="list"><i class="fas fa-list"></i> List</div>
+  <div class="menu-item" data-view="detail"><i class="fas fa-align-left"></i> Detail</div>
+</div>
+
+<div class="notification-drawer" id="notifDrawer">
+  <div class="notif-header"><i class="fas fa-bell"></i> Notifications</div>
+  <div class="notif-list" id="notifList"></div>
+</div>
+
+<div class="grid-main">
+  <div class="page-viewport" id="pageViewport">
+    <div class="app-grid medium" id="appGrid"></div>
+  </div>
+  <div class="dots-container" id="dotsContainer"></div>
+</div>
+
+<script>
+  // ---------- IMPROVED JAVASCRIPT ----------
+  let apps = [];
+  let viewMode = "medium";
+  let currentPage = 0, totalPages = 1, itemsPerPage = 0;
+  let notifications = [];
+
+  // Helper: add notification
+// Robust replacement for addNotification
+const notificationTimeouts = new Map();      // stores timeouts per notification id
+const lastMessageTracker = new Map();        // prevents duplicate spam
+
+function addNotification(msg, icon = "info-circle") {
+  // 1. Anti‑spam: ignore identical message within 2 seconds
+  const now = Date.now();
+  const lastTime = lastMessageTracker.get(msg);
+  if (lastTime && (now - lastTime) < 2000) return;
+  lastMessageTracker.set(msg, now);
+  setTimeout(() => lastMessageTracker.delete(msg), 2500);
+
+  // 2. Create notification object with unique id
+  const id = `${now}-${Math.random().toString(36).substr(2, 6)}`;
+  const newNotif = { id, msg, icon, time: new Date().toLocaleTimeString() };
+
+  // 3. Add to array, keep last 8
+  notifications.unshift(newNotif);
+  if (notifications.length > 8) {
+    const removed = notifications.pop();
+    if (notificationTimeouts.has(removed.id)) {
+      clearTimeout(notificationTimeouts.get(removed.id));
+      notificationTimeouts.delete(removed.id);
+    }
+  }
+
+  // 4. Render the drawer list (batched)
+  requestAnimationFrame(() => renderNotificationList());
+
+  // 5. Show temporary toast (immediate feedback)
+  showToastNotification(msg, icon);
+
+  // 6. Auto‑remove from drawer after 5 seconds
+  const timeoutId = setTimeout(() => {
+    const index = notifications.findIndex(n => n.id === id);
+    if (index !== -1) {
+      notifications.splice(index, 1);
+      requestAnimationFrame(() => renderNotificationList());
+    }
+    notificationTimeouts.delete(id);
+  }, 5000);
+  notificationTimeouts.set(id, timeoutId);
+}
+
+// Helper: floating toast (auto‑removes after 3s)
+function showToastNotification(msg, icon) {
+  let toast = document.getElementById('tempToast');
+  if (toast) toast.remove();
+  toast = document.createElement('div');
+  toast.id = 'tempToast';
+  toast.innerHTML = `<i class="fas fa-${icon}"></i> ${msg}`;
+  Object.assign(toast.style, {
+    position: 'fixed', bottom: '80px', left: '16px', right: '16px',
+    background: '#2c2f36e6', backdropFilter: 'blur(12px)', padding: '12px',
+    borderRadius: '30px', textAlign: 'center', zIndex: '200',
+    fontSize: '14px', transition: 'opacity 0.2s'
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function renderNotificationList() {
+  const container = document.getElementById("notifList");
+  if (!container) return;
+
+  // Ensure notifications is an array (defensive)
+  if (!Array.isArray(notifications)) notifications = [];
+
+  if (notifications.length === 0) {
+    container.innerHTML = '<div style="opacity:0.6; padding:8px;">✨ No new notifications</div>';
+    return;
+  }
+
+  // Use a document fragment to batch DOM updates
+  const fragment = document.createDocumentFragment();
+  for (const n of notifications) {
+    const div = document.createElement('div');
+    div.className = 'notif-item';
+    // Safe escaping for msg (user input)
+    const safeMsg = escapeHtml(n.msg || '');
+    const safeIcon = n.icon ? n.icon.replace(/[^a-z0-9-]/gi, '') : 'info-circle';
+    const timeText = n.time || new Date().toLocaleTimeString();
+    div.innerHTML = `
+      <i class="fas fa-${safeIcon}"></i>
+      <span>${safeMsg}</span>
+      <span style="margin-left:auto; font-size:10px;">${escapeHtml(timeText)}</span>
+    `;
+    fragment.appendChild(div);
+  }
+
+  // Clear and append in one operation
+  container.innerHTML = '';
+  container.appendChild(fragment);
+}
+
+
+  function uid() { return Date.now() + '-' + Math.random().toString(36).substr(2, 8); }
+  function getDomainFromUrl(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e) { return "website"; } }
+  function faviconUrl(url) { try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`; } catch(e) { return ""; } }
+
+async function addNewApp(link, customName = null) {
+  // 1. Input validation
+  if (!link || typeof link !== 'string') {
+    addNotification("No URL provided", "exclamation-triangle");
+    return false;
+  }
+
+  // 2. Sanitise URL
+  let sanitisedUrl = link.trim();
+  if (!sanitisedUrl.startsWith('http://') && !sanitisedUrl.startsWith('https://')) {
+    sanitisedUrl = 'https://' + sanitisedUrl;
+  }
+
+  // 3. Validate URL structure
+  let validUrl;
+  try {
+    validUrl = new URL(sanitisedUrl);
+    // Only allow http / https
+    if (!['http:', 'https:'].includes(validUrl.protocol)) {
+      throw new Error('Unsupported protocol');
+    }
+  } catch (e) {
+    addNotification(`Invalid URL: ${link}`, "exclamation-triangle");
+    return false;
+  }
+
+  // 4. Duplicate check (prevent adding same URL twice)
+  const existing = apps.find(app => !app.isAddButton && app.url === validUrl.href);
+  if (existing) {
+    addNotification(`"${existing.name}" already exists`, "info-circle");
+    return false;
+  }
+
+  // 5. Generate app name
+  let appName = customName ? customName.trim() : getDomainFromUrl(validUrl.href);
+  if (!appName) appName = "Website";
+  appName = appName.substring(0, 24);
+
+  // 6. Fetch favicon with fallback chain
+  let favicon = faviconUrl(validUrl.href);
+  // Test if favicon loads (optional: we can try to preload, but we'll rely on img onerror later)
+  // For robustness, also add a fallback to a default icon
+  const finalFavicon = favicon || "https://www.google.com/s2/favicons?domain=default.com&sz=64";
+
+  // 7. Create new app object
+  const newApp = {
+    id: uid(),
+    url: validUrl.href,
+    name: appName,
+    favicon: finalFavicon,
+    isAddButton: false
+  };
+
+  // 8. Insert before the add button (if present)
+  const plusIdx = apps.findIndex(a => a.isAddButton === true);
+  if (plusIdx !== -1) {
+    apps.splice(plusIdx, 0, newApp);
+  } else {
+    apps.push(newApp);
+  }
+
+  // 9. Ensure plus button is at the end (in case something shifted)
+  ensurePlusButton();
+
+  // 10. Recalculate pagination and navigate to the page containing the new app
+  recalcPagination();
+  const newAppIndex = apps.findIndex(a => a.id === newApp.id);
+  const targetPage = Math.floor(newAppIndex / itemsPerPage);
+  goToPage(Math.min(totalPages - 1, targetPage));
+
+  // 11. Notify success
+  addNotification(`➕ Added "${appName}"`, "plus-circle");
+  return true;
+}
+
+  function ensurePlusButton() {
+    const hasPlus = apps.some(a => a.isAddButton);
+    if (!hasPlus) apps.push({ isAddButton: true });
+    else {
+      const idx = apps.findIndex(a => a.isAddButton);
+      if (idx !== apps.length-1) { const plus = apps.splice(idx,1)[0]; apps.push(plus); }
+    }
+  }
+
+// Global variable to store pending undo (only one at a time)
+let pendingDeletion = null;
+let undoTimeout = null;
+
+function deleteAppById(id) {
+  // 1. Find app index
+  const idx = apps.findIndex(a => a.id === id);
+  
+  // 2. Validation: app must exist and not be the add button
+  if (idx === -1) {
+    console.warn(`deleteAppById: app with id ${id} not found`);
+    return false;
+  }
+  if (apps[idx].isAddButton) {
+    console.warn("Cannot delete the add button");
+    return false;
+  }
+
+  // 3. Cancel any previous pending undo
+  if (undoTimeout) {
+    clearTimeout(undoTimeout);
+    pendingDeletion = null;
+  }
+
+  // 4. Store app data for possible undo
+  const deletedApp = { ...apps[idx] };
+  const deletedIndex = idx;
+  const originalName = deletedApp.name;
+
+  // 5. Perform deletion
+  apps.splice(idx, 1);
+  ensurePlusButton();        // reorder plus to end if needed
+  recalcPagination();       // update page count
+
+  // 6. Adjust current page if necessary
+  if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
+  if (currentPage < 0) currentPage = 0;
+  renderCurrentPage();
+
+  // 7. Show a toast with Undo option (non‑blocking)
+  const toastId = showUndoToast(`Removed "${originalName}"`, () => {
+    // UNDO: restore app at its original position
+    if (pendingDeletion && pendingDeletion.id === id) {
+      apps.splice(deletedIndex, 0, deletedApp);
+      ensurePlusButton();
+      recalcPagination();
+      if (currentPage >= totalPages) currentPage = totalPages - 1;
+      renderCurrentPage();
+      addNotification(`↩️ Restored "${originalName}"`, "undo-alt");
+      pendingDeletion = null;
+      if (undoTimeout) clearTimeout(undoTimeout);
+    }
+  });
+
+  // 8. Set a timeout to finalize deletion (no undo after 5 seconds)
+  undoTimeout = setTimeout(() => {
+    if (pendingDeletion && pendingDeletion.id === id) {
+      pendingDeletion = null;
+      addNotification(`🗑️ Removed ${originalName} permanently`, "trash-alt");
+    }
+    undoTimeout = null;
+  }, 5000);
+
+  pendingDeletion = { id, timeout: undoTimeout };
+  return true;
+}
+
+// Helper: creates a temporary toast with an Undo button
+function showUndoToast(message, onUndo) {
+  const toast = document.createElement('div');
+  toast.className = 'undo-toast';
+  toast.innerHTML = `
+    <span>${escapeHtml(message)}</span>
+    <button class="undo-btn">Undo</button>
+  `;
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '80px',
+    left: '16px',
+    right: '16px',
+    background: '#2c2f36e6',
+    backdropFilter: 'blur(12px)',
+    padding: '12px 16px',
+    borderRadius: '40px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: '300',
+    fontSize: '14px',
+    fontWeight: '500',
+    gap: '12px'
+  });
+  const btn = toast.querySelector('.undo-btn');
+  btn.style.cssText = `
+    background: #4c6ef5;
+    border: none;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-weight: bold;
+    cursor: pointer;
+  `;
+  btn.addEventListener('click', () => {
+    onUndo();
+    toast.remove();
+  });
+  document.body.appendChild(toast);
+  // Auto-remove toast after 5 seconds (if not undone)
+  setTimeout(() => {
+    if (toast.parentNode) toast.remove();
+  }, 5000);
+  return toast;
+}
+
+  function calculateItemsPerPage() {
+    const grid = document.getElementById('appGrid');
+    if (!grid) return 8;
+    const viewport = document.getElementById('pageViewport');
+    const h = viewport.clientHeight - 20;
+    const dummy = document.createElement('div');
+    dummy.className = 'app-tile';
+    dummy.style.visibility = 'hidden';
+    dummy.innerHTML = `<div class="app-icon" style="width:70px;height:70px"></div><div class="app-name">Test</div>`;
+    grid.appendChild(dummy);
+    const tileH = dummy.offsetHeight + 20;
+    grid.removeChild(dummy);
+    let cols = 4;
+    if (viewMode === 'large') cols = 2;
+    else if (viewMode === 'medium') cols = (window.innerWidth < 500 ? 3 : 4);
+    else if (viewMode === 'small') cols = (window.innerWidth < 500 ? 4 : 6);
+    else if (viewMode === 'list' || viewMode === 'detail') cols = 1;
+    const rows = Math.max(1, Math.floor(h / tileH));
+    return Math.max(cols * rows, 1);
+  }
+
+  function recalcPagination() {
+    itemsPerPage = calculateItemsPerPage();
+    totalPages = Math.max(1, Math.ceil(apps.length / itemsPerPage));
+    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    if (currentPage < 0) currentPage = 0;
+    renderDots();
+  }
+
+  function getCurrentPageItems() {
+    const start = currentPage * itemsPerPage;
+    return apps.slice(start, start + itemsPerPage);
+  }
+function renderCurrentPage() {
+  const grid = document.getElementById('appGrid');
+  if (!grid) return;
+
+  // Apply current view mode class
+  grid.className = `app-grid ${viewMode}`;
+  
+  // Get items for the current page
+  const items = getCurrentPageItems();
+  
+  // Clear grid efficiently
+  grid.innerHTML = '';
+  
+  // Use DocumentFragment for batch DOM insertion
+  const fragment = document.createDocumentFragment();
+  
+  items.forEach(item => {
+    if (item.isAddButton) {
+      // --- Add Button Tile ---
+      const tile = document.createElement('div');
+      tile.className = 'app-tile add-tile';
+      
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'app-icon';
+      const plusIcon = document.createElement('i');
+      plusIcon.className = 'fas fa-plus';
+      plusIcon.style.cssText = 'font-size: 32px; color: white;';
+      iconDiv.appendChild(plusIcon);
+      
+      const nameSpan = document.createElement('div');
+      nameSpan.className = 'app-name';
+      nameSpan.textContent = 'Add link';
+      
+      tile.appendChild(iconDiv);
+      tile.appendChild(nameSpan);
+      
+      // Click handler (async, non-blocking)
+      tile.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const url = prompt("Enter website URL (https://...):", "https://");
+        if (url && url.trim()) {
+          await addNewApp(url.trim());
+        }
+      });
+      
+      fragment.appendChild(tile);
+    } else {
+      // --- Regular App Tile ---
+      const tile = document.createElement('div');
+      tile.className = 'app-tile';
+      tile.setAttribute('data-id', item.id);
+      
+      // Icon container
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'app-icon';
+      
+      const img = document.createElement('img');
+      // Set favicon with fallback
+      img.src = item.favicon || 'https://www.google.com/s2/favicons?domain=default.com&sz=64';
+      img.alt = escapeHtml(item.name);
+      // Robust fallback if image fails to load
+      img.onerror = function() {
+        this.src = 'https://www.google.com/s2/favicons?domain=default.com&sz=64';
+        this.onerror = null; // prevent infinite loop
+      };
+      
+      iconDiv.appendChild(img);
+      
+      // App name
+      const nameSpan = document.createElement('div');
+      nameSpan.className = 'app-name';
+      nameSpan.textContent = escapeHtml(item.name);
+      
+      tile.appendChild(iconDiv);
+      tile.appendChild(nameSpan);
+      
+      // Click to open link
+      tile.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (item.url) {
+          window.open(item.url, '_blank', 'noopener,noreferrer');
+        }
+      });
+      
+      // Long press (contextmenu) to delete – now without confirm()
+      tile.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Add a tiny haptic feedback if supported (optional)
+        if (navigator.vibrate) navigator.vibrate(50);
+        // Direct deletion – undo toast will handle confirmation
+        deleteAppById(item.id);
+      });
+      
+      fragment.appendChild(tile);
+    }
+  });
+  
+  // Append all tiles at once
+  grid.appendChild(fragment);
+}
+
+  function escapeHtml(str) {
+  // Handle null, undefined, or non-string inputs
+  if (str == null) return '';
+  if (typeof str !== 'string') str = String(str);
+  
+  // Map of characters to their HTML entity equivalents
+  const htmlEntities = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',      // apostrophe (single quote)
+    '`': '&#96;',      // backtick
+    '/': '&#47;',      // forward slash (helps with closing tags)
+    '=': '&#61;'       // equals sign (prevents attribute injection)
+  };
+  
+  // Use replace with a regex that matches any of the dangerous characters
+  return str.replace(/[&<>"'`\/=]/g, function(match) {
+    return htmlEntities[match] || match;
+  });
+}
+
+  function renderDots() {
+    const dotsDiv = document.getElementById('dotsContainer');
+    if (!dotsDiv) return;
+    if (totalPages <= 1) { dotsDiv.style.display = 'none'; return; }
+    dotsDiv.style.display = 'flex';
+    dotsDiv.innerHTML = '';
+    for (let i=0; i<totalPages; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot' + (i===currentPage ? ' active' : '');
+      dot.addEventListener('click', () => goToPage(i));
+      dotsDiv.appendChild(dot);
+    }
+  }
+
+  function goToPage(page) {
+    if (page<0) page=0;
+    if (page>=totalPages) page=totalPages-1;
+    currentPage = page;
+    renderCurrentPage();
+    renderDots();
+  }
+
+  // --- REVERSIBLE NOTIFICATION DRAWER (swipe up/down) ---
+  const drawer = document.getElementById('notifDrawer');
+  let touchStartY = 0, touchMoveY = 0;
+  let isDraggingDrawer = false;
+  const viewportDiv = document.getElementById('pageViewport');
+
+  viewportDiv.addEventListener('touchstart', (e) => {
+    const rect = drawer.getBoundingClientRect();
+    const isDrawerOpen = drawer.classList.contains('open');
+    // if drawer is open, allow swipe up to close
+    if (isDrawerOpen) {
+      touchStartY = e.touches[0].clientY;
+      isDraggingDrawer = true;
+    } else if (e.touches[0].clientY < 50) {
+      // top edge swipe to open
+      touchStartY = e.touches[0].clientY;
+      isDraggingDrawer = true;
+    } else {
+      isDraggingDrawer = false;
+    }
+  });
+
+  viewportDiv.addEventListener('touchmove', (e) => {
+    if (!isDraggingDrawer) return;
+    const currentY = e.touches[0].clientY;
+    const delta = currentY - touchStartY;
+    const isOpen = drawer.classList.contains('open');
+    if (isOpen && delta < -30) {
+      // swipe up to close
+      drawer.classList.remove('open');
+      isDraggingDrawer = false;
+      addNotification("Notifications closed", "chevron-up");
+    } else if (!isOpen && delta > 40) {
+      // swipe down to open
+      drawer.classList.add('open');
+      isDraggingDrawer = false;
+      addNotification("Notifications open", "chevron-down");
+    }
+  });
+
+  viewportDiv.addEventListener('touchend', () => {
+    isDraggingDrawer = false;
+  });
+
+  // Close drawer when tapping outside (optional)
+  document.addEventListener('click', (e) => {
+    if (drawer.classList.contains('open') && !drawer.contains(e.target) && !e.target.closest('.settings-dots')) {
+      drawer.classList.remove('open');
+    }
+  });
+
+  // --- SCROLL NOTIFICATION (reusable toast, throttled) ---
+  let lastScrollTop = 0;
+  let scrollToastTimer = null;
+  let scrollToastElement = null;      // single reusable element
+
+  // Create the toast element once (invisible initially)
+  function getScrollToast() {
+    if (!scrollToastElement) {
+      scrollToastElement = document.createElement('div');
+      scrollToastElement.id = 'tempScrollNotif';
+      scrollToastElement.textContent = '📱 Scroll detected · Pull down for notifications';
+      Object.assign(scrollToastElement.style, {
+        position: 'fixed',
+        top: '60px',
+        left: '16px',
+        right: '16px',
+        background: '#2c2f36e6',
+        backdropFilter: 'blur(12px)',
+        padding: '10px',
+        borderRadius: '30px',
+        textAlign: 'center',
+        zIndex: '200',
+        fontSize: '13px',
+        transition: 'opacity 0.2s',
+        opacity: '0',
+        pointerEvents: 'none'
+      });
+      document.body.appendChild(scrollToastElement);
+    }
+    return scrollToastElement;
+  }
+
+  // Show the toast with a fade-in/out effect (throttled)
+  let lastScrollNotificationTime = 0;
+  function showScrollNotification() {
+    const now = Date.now();
+    // Throttle: only show once every 3 seconds at most
+    if (now - lastScrollNotificationTime < 3000) return;
+    lastScrollNotificationTime = now;
+
+    const toast = getScrollToast();
+    // Cancel any pending hide
+    if (scrollToastTimer) clearTimeout(scrollToastTimer);
+    // Fade in
+    toast.style.opacity = '1';
+    // Auto-hide after 2 seconds
+    scrollToastTimer = setTimeout(() => {
+      if (toast) toast.style.opacity = '0';
+      scrollToastTimer = null;
+    }, 2000);
+  }
+
+  // Scroll event listener (replaces the old one)
+  viewportDiv.addEventListener('scroll', () => {
+    const st = viewportDiv.scrollTop;
+    if (st > lastScrollTop && st > 30) {
+      // scrolling down – show reusable toast
+      showScrollNotification();
+    } else if (st < lastScrollTop && drawer.classList.contains('open')) {
+      // scrolling up while drawer open -> close drawer (reversible)
+      drawer.classList.remove('open');
+    }
+    lastScrollTop = st <= 0 ? 0 : st;
+  });
+
+  // --- Three-dot menu fixed position (already CSS) ---
+  const dotsBtn = document.getElementById('dotsMenu');
+  const viewMenu = document.getElementById('viewMenu');
+  dotsBtn.addEventListener('click', (e) => { e.stopPropagation(); viewMenu.classList.toggle('show'); });
+  document.addEventListener('click', (e) => { if (!dotsBtn.contains(e.target) && !viewMenu.contains(e.target)) viewMenu.classList.remove('show'); });
+  document.querySelectorAll('.menu-item[data-view]').forEach(el => {
+    el.addEventListener('click', () => {
+      const newView = el.getAttribute('data-view');
+      if (newView) { viewMode = newView; localStorage.setItem('appViewMode', viewMode); recalcPagination(); renderCurrentPage(); renderDots(); viewMenu.classList.remove('show'); addNotification(`View: ${viewMode}`, "eye"); }
+    });
+  });
+
+  // Battery & time (unchanged, but improved)
+  function updateTime() { document.getElementById('liveTime').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+  setInterval(updateTime, 1000); updateTime();
+  async function initBattery() {
+    if ('getBattery' in navigator) {
+      try {
+        const b = await navigator.getBattery();
+        const update = () => {
+          const p = Math.round(b.level*100);
+          document.getElementById('batteryPercent').textContent = p+'%';
+          const fill = document.getElementById('batteryFill');
+          fill.style.width = p+'%';
+          if (p<=15) fill.style.backgroundColor = '#ff3b30';
+          else if (p>=99) fill.style.backgroundColor = '#34c759';
+          else fill.style.backgroundColor = 'white';
+          if (p<=15 && !b.charging) addNotification("⚠️ Low battery", "battery-quarter");
+        };
+        update();
+        b.addEventListener('levelchange', update);
+      } catch(e) { fallbackBattery(); }
+    } else fallbackBattery();
+  }
+  function fallbackBattery() { document.getElementById('batteryFill').style.width='87%'; document.getElementById('batteryPercent').textContent='87%'; }
+  initBattery();
+
+  // Auto-hide status bar on scroll (three dots stay visible)
+  let lastScroll = 0;
+  const statusBar = document.getElementById('statusBar');
+  viewportDiv.addEventListener('scroll', () => {
+    const current = viewportDiv.scrollTop;
+    if (current > lastScroll && current > 50) statusBar.classList.add('hide');
+    else if (current < lastScroll) statusBar.classList.remove('hide');
+    lastScroll = current;
+  });
+
+  // Initialise
+  function init() {
+    apps = [];
+    ensurePlusButton();
+    const savedView = localStorage.getItem('appViewMode');
+    if (savedView && ['large','medium','small','list','detail'].includes(savedView)) viewMode = savedView;
+    recalcPagination();
+    renderCurrentPage();
+    renderDots();
+    addNotification("Tap + ", "rocket");
+  }
+  init();
+</script>
+</body>
+</html>
