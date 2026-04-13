@@ -115,23 +115,73 @@
     /* rest of grid styles same as before */
     .grid-main { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; touch-action: pan-y pinch-zoom; }
     .page-viewport { flex: 1; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; padding: 16px 16px 8px 16px; }
-    .app-grid { display: grid; gap: 20px 12px; justify-items: center; align-items: start; transition: all 0.2s; }
-    .app-grid.large { grid-template-columns: repeat(2, minmax(100px, 130px)); }
+            .app-grid {
+      display: grid;
+      gap: 20px 16px;
+      justify-content: center;
+      align-content: start;
+      transition: all 0.2s;
+    }
+    
+    /* Large mode: 3 columns */
+    .app-grid.large {
+      grid-template-columns: repeat(3, 100px);
+    }
     .app-grid.large .app-icon { width: 90px; height: 90px; }
-    .app-grid.large .app-name { font-size: 13px; }
-    .app-grid.medium { grid-template-columns: repeat(4, minmax(70px, 90px)); }
-    .app-grid.medium .app-icon { width: 70px; height: 70px; }
-    .app-grid.medium .app-name { font-size: 11px; }
-    .app-grid.small { grid-template-columns: repeat(6, minmax(60px, 75px)); }
-    .app-grid.small .app-icon { width: 55px; height: 55px; }
-    .app-grid.small .app-name { font-size: 10px; }
-    .app-grid.list { grid-template-columns: 1fr; }
-    .app-grid.list .app-tile { flex-direction: row; justify-content: flex-start; gap: 16px; background: rgba(255,255,255,0.05); padding: 10px 16px; border-radius: 28px; width: 100%; }
+    .app-grid.large .app-name { font-size: 14px; max-width: 90px; }
+    
+    /* Medium mode: 4 columns */
+    .app-grid.medium {
+      grid-template-columns: repeat(4, 90px);
+    }
+    .app-grid.medium .app-icon { width: 75px; height: 75px; }
+    .app-grid.medium .app-name { font-size: 12px; max-width: 80px; }
+    
+    /* Small mode: 6 columns */
+    .app-grid.small {
+      grid-template-columns: repeat(6, 70px);
+    }
+    .app-grid.small .app-icon { width: 60px; height: 60px; }
+    .app-grid.small .app-name { font-size: 11px; max-width: 65px; }
+    
+    /* List & Detail: 1 column, full width */
+    .app-grid.list,
+    .app-grid.detail {
+      grid-template-columns: 1fr;
+    }
+    .app-grid.list .app-tile {
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: 16px;
+      background: rgba(255,255,255,0.05);
+      padding: 10px 16px;
+      border-radius: 28px;
+      width: 100%;
+    }
     .app-grid.list .app-icon { width: 48px; height: 48px; margin-bottom: 0; }
-    .app-grid.detail { grid-template-columns: 1fr; }
-    .app-grid.detail .app-tile { flex-direction: row; justify-content: flex-start; gap: 18px; background: rgba(255,255,255,0.08); padding: 16px 20px; border-radius: 32px; width: 100%; }
+    .app-grid.detail .app-tile {
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: 18px;
+      background: rgba(255,255,255,0.08);
+      padding: 16px 20px;
+      border-radius: 32px;
+      width: 100%;
+    }
     .app-grid.detail .app-icon { width: 64px; height: 64px; }
     .app-grid.detail .app-name { font-size: 18px; font-weight: 600; }
+    
+    /* Responsive: reduce columns on small screens */
+    @media (max-width: 600px) {
+      .app-grid.large { grid-template-columns: repeat(2, 100px); }
+      .app-grid.medium { grid-template-columns: repeat(3, 90px); }
+      .app-grid.small { grid-template-columns: repeat(4, 70px); }
+    }
+    @media (max-width: 400px) {
+      .app-grid.large { grid-template-columns: repeat(2, 90px); }
+      .app-grid.medium { grid-template-columns: repeat(2, 90px); }
+      .app-grid.small { grid-template-columns: repeat(3, 70px); }
+    }
     .app-tile { display: flex; flex-direction: column; align-items: center; width: 100%; cursor: pointer; transition: transform 0.1s; position: relative; }
     .app-tile:active { transform: scale(0.96); }
     .app-icon { background: rgba(255,255,255,0.1); backdrop-filter: blur(4px); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.2); }
@@ -574,25 +624,145 @@ function showUndoToast(message, onUndo) {
 
   function calculateItemsPerPage() {
     const grid = document.getElementById('appGrid');
-    if (!grid) return 8;
     const viewport = document.getElementById('pageViewport');
-    const h = viewport.clientHeight - 20;
+    
+    // ----- GUARD: Ensure required elements exist -----
+    if (!grid || !viewport) return 8; // sensible fallback
+    
+    // ----- CREATE A PRECISE MEASUREMENT TILE -----
     const dummy = document.createElement('div');
     dummy.className = 'app-tile';
-    dummy.style.visibility = 'hidden';
-    dummy.innerHTML = `<div class="app-icon" style="width:70px;height:70px"></div><div class="app-name">Test</div>`;
-    grid.appendChild(dummy);
-    const tileH = dummy.offsetHeight + 20;
-    grid.removeChild(dummy);
-    let cols = 4;
-    if (viewMode === 'large') cols = 2;
-    else if (viewMode === 'medium') cols = (window.innerWidth < 500 ? 3 : 4);
-    else if (viewMode === 'small') cols = (window.innerWidth < 500 ? 4 : 6);
-    else if (viewMode === 'list' || viewMode === 'detail') cols = 1;
-    const rows = Math.max(1, Math.floor(h / tileH));
-    return Math.max(cols * rows, 1);
+    dummy.setAttribute('aria-hidden', 'true');
+    dummy.style.cssText = `
+      visibility: hidden !important;
+      position: absolute !important;
+      pointer-events: none !important;
+      left: -9999px !important;
+      top: -9999px !important;
+      width: auto !important;
+      height: auto !important;
+    `;
+    
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'app-icon';
+    
+    // Apply current view mode icon size (matches CSS exactly)
+    if (viewMode === 'large') {
+      iconDiv.style.width = '90px';
+      iconDiv.style.height = '90px';
+    } else if (viewMode === 'small') {
+      iconDiv.style.width = '60px';
+      iconDiv.style.height = '60px';
+    } else if (viewMode === 'list' || viewMode === 'detail') {
+      iconDiv.style.width = '48px';
+      iconDiv.style.height = '48px';
+    } else {
+      // medium (default)
+      iconDiv.style.width = '75px';
+      iconDiv.style.height = '75px';
+    }
+    
+    const nameSpan = document.createElement('div');
+    nameSpan.className = 'app-name';
+    nameSpan.textContent = 'Measure'; // short text to avoid wrapping issues
+    
+    dummy.appendChild(iconDiv);
+    dummy.appendChild(nameSpan);
+    
+    // Append to the same parent as the grid for identical styling context
+    const container = grid.parentNode || document.body;
+    container.appendChild(dummy);
+    
+    // ----- FORCE LAYOUT & MEASURE TILE HEIGHT (INCLUDES MARGINS) -----
+    dummy.offsetHeight; // force reflow
+    const tileRect = dummy.getBoundingClientRect();
+    const tileHeight = tileRect.height;
+    
+    // ----- DETERMINE ROW GAP (FROM GRID OR FALLBACK) -----
+    const gridStyle = window.getComputedStyle(grid);
+    let rowGap = parseInt(gridStyle.rowGap) || parseInt(gridStyle.gap) || 20;
+    // If gap uses 'normal', default to ~20px (common in our CSS)
+    if (gridStyle.rowGap === 'normal') rowGap = 20;
+    
+    const effectiveTileHeight = tileHeight + rowGap;
+    
+    // ----- CLEAN UP MEASUREMENT TILE -----
+    dummy.remove();
+    
+    // ----- ROBUST COLUMN COUNT DETECTION -----
+    let columnCount = 4; // fallback default
+    
+    const template = gridStyle.gridTemplateColumns;
+    
+    if (template && template !== 'none') {
+      // Handle 'repeat(4, 90px)' or 'repeat(4, minmax(...))'
+      const repeatMatch = template.match(/repeat\((\d+)/);
+      if (repeatMatch) {
+        columnCount = parseInt(repeatMatch[1]);
+      }
+      // Handle '1fr' (single column)
+      else if (template === '1fr' || template.includes('1fr') && template.split(' ').length === 1) {
+        columnCount = 1;
+      }
+      // Handle space-separated values like '90px 90px 90px 90px'
+      else {
+        const cols = template.split(' ').filter(s => s.trim().length > 0);
+        columnCount = cols.length || 4;
+      }
+    }
+    
+    // If grid has rendered children, we can cross-check by comparing positions
+    if (grid.children.length > 1) {
+      const first = grid.children[0];
+      const second = grid.children[1];
+      if (first && second) {
+        const firstRect = first.getBoundingClientRect();
+        const secondRect = second.getBoundingClientRect();
+        // If they are on the same row, second's left > first's left
+        if (secondRect.left > firstRect.left) {
+          const childColumns = Math.round(grid.clientWidth / (secondRect.left - firstRect.left));
+          if (childColumns > 0) columnCount = childColumns;
+        } else {
+          // All children in a single column
+          columnCount = 1;
+        }
+      }
+    }
+    
+    // Override for list/detail modes (always 1 column)
+    if (viewMode === 'list' || viewMode === 'detail') {
+      columnCount = 1;
+    }
+    
+    // ----- FALLBACK BASED ON VIEW MODE & SCREEN WIDTH (if detection fails) -----
+    if (columnCount <= 1 && viewMode !== 'list' && viewMode !== 'detail') {
+      const w = window.innerWidth;
+      if (viewMode === 'large') {
+        columnCount = (w <= 400) ? 2 : (w <= 600) ? 2 : 3;
+      } else if (viewMode === 'medium') {
+        columnCount = (w <= 400) ? 2 : (w <= 600) ? 3 : 4;
+      } else if (viewMode === 'small') {
+        columnCount = (w <= 400) ? 3 : (w <= 600) ? 4 : 6;
+      }
+    }
+    
+    // Ensure columnCount is at least 1
+    columnCount = Math.max(1, columnCount);
+    
+    // ----- CALCULATE VIEWPORT HEIGHT (account for padding/border) -----
+    const viewportStyle = window.getComputedStyle(viewport);
+    const paddingTop = parseInt(viewportStyle.paddingTop) || 0;
+    const paddingBottom = parseInt(viewportStyle.paddingBottom) || 0;
+    const availableHeight = viewport.clientHeight - paddingTop - paddingBottom;
+    
+    // ----- HOW MANY FULL ROWS FIT? -----
+    const rowsThatFit = Math.max(1, Math.floor(availableHeight / effectiveTileHeight));
+    
+    // ----- FINAL ITEMS PER PAGE -----
+    const itemsPerPage = Math.max(columnCount * rowsThatFit, 1);
+    
+    return itemsPerPage;
   }
-
   function recalcPagination() {
     itemsPerPage = calculateItemsPerPage();
     totalPages = Math.max(1, Math.ceil(apps.length / itemsPerPage));
@@ -724,6 +894,9 @@ function renderCurrentPage() {
   input.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') confirmBtn.click();
   });
+
+  // Ensure input gets focus (works even if autofocus fails)
+  setTimeout(() => input.focus(), 50);
 });
       
       fragment.appendChild(tile);
@@ -1023,7 +1196,7 @@ function renderCurrentPage() {
     fullscreenBtn.addEventListener('click', toggleNativeFullscreen);
   }
 
-  // Update icon when fullscreen changes
+  // Update icon and recalc layout when fullscreen changes
   document.addEventListener('fullscreenchange', () => {
     if (fullscreenBtn) {
       const icon = fullscreenBtn.querySelector('i');
@@ -1031,6 +1204,12 @@ function renderCurrentPage() {
         icon.className = document.fullscreenElement ? 'fas fa-compress' : 'fas fa-expand';
       }
     }
+    // Recalculate items per page and re-render after fullscreen transition
+    setTimeout(() => {
+      recalcPagination();
+      renderCurrentPage();
+      renderDots();
+    }, 50); // small delay for DOM to settle
   });
   // --- SWIPE PAGING + SCROLL NOTIFICATION (improved) ---
   let lastScrollTop = 0;
@@ -1075,12 +1254,15 @@ function renderCurrentPage() {
     isSwiping = true;
   }, { passive: true });
 
-  viewportDiv.addEventListener('touchmove', (e) => {
+   viewportDiv.addEventListener('touchmove', (e) => {
     if (!isSwiping) return;
     const deltaX = e.touches[0].clientX - touchStartX;
     const deltaY = e.touches[0].clientY - touchStartY;
-    // If primarily horizontal and enough movement, prevent scroll
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 20) {
+    // Only prevent default if:
+    // - Horizontal movement dominates (ratio > 2:1)
+    // - Horizontal distance exceeds threshold
+    // - Vertical movement is minimal (< 15px)
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 20 && Math.abs(deltaY) < 15) {
       e.preventDefault();
     }
   }, { passive: false });
@@ -1117,7 +1299,7 @@ function renderCurrentPage() {
     setTimeout(() => toast.remove(), 800);
   }
 
-  // Scroll handling (vertical)
+    // Scroll handling (vertical)
   viewportDiv.addEventListener('scroll', () => {
     const st = viewportDiv.scrollTop;
     if (st > lastScrollTop && st > 30) {
@@ -1126,6 +1308,26 @@ function renderCurrentPage() {
       drawer.classList.remove('open');
     }
     lastScrollTop = st <= 0 ? 0 : st;
+  });
+
+  // --- Keyboard navigation (desktop arrow keys) ---
+  document.addEventListener('keydown', (e) => {
+    // Only handle if not typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (currentPage > 0) {
+        goToPage(currentPage - 1);
+        showPageChangeToast('←');
+      }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (currentPage < totalPages - 1) {
+        goToPage(currentPage + 1);
+        showPageChangeToast('→');
+      }
+    }
   });
 
   // --- Three-dot menu fixed position (already CSS) ---
@@ -1149,7 +1351,7 @@ function renderCurrentPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `home_apps_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = 'home_apps.json'; // Fixed name – always overwrites previous export
     a.click();
     URL.revokeObjectURL(url);
     addNotification(`📦 Exported ${exportData.length} apps`, 'download');
@@ -1157,19 +1359,28 @@ function renderCurrentPage() {
 
   document.getElementById('shareTextBtn')?.addEventListener('click', () => {
     viewMenu.classList.remove('show');
-    const list = apps.filter(a => !a.isAddButton).map(a => `${a.name}: ${a.url}`).join('\n');
-    if (navigator.share) {
-      navigator.share({
-        title: 'My Home Apps',
-        text: list,
-      }).catch(() => {});
-    } else {
-      // fallback: copy to clipboard
-      navigator.clipboard?.writeText(list).then(() => {
-        addNotification('📋 Copied app list to clipboard', 'clipboard');
+    
+    // Build an organized text representation
+    const appLines = apps.filter(a => !a.isAddButton).map((app, idx) => {
+      return `${idx + 1}. ${app.name}\n   ${app.url}`;
+    });
+    const header = `My Home Apps (${appLines.length} total)\n${'='.repeat(30)}`;
+    const textToCopy = [header, ...appLines].join('\n\n');
+    
+    // Copy to clipboard (with fallback)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        addNotification('📋 App list copied to clipboard', 'clipboard-check');
       }).catch(() => {
-        prompt('Copy this list manually:', list);
+        fallbackPrompt(textToCopy);
       });
+    } else {
+      fallbackPrompt(textToCopy);
+    }
+    
+    function fallbackPrompt(text) {
+      prompt('Copy this list manually:', text);
+      addNotification('📋 Manual copy required', 'clipboard');
     }
   });
 
