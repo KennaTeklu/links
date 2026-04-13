@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FullScreen Home · Fixed Notifications & Menu</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <style>
     /* (same base styles as before, but with updated .settings-dots position) */
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
@@ -145,6 +146,8 @@
       .app-grid.medium { grid-template-columns: repeat(3, 1fr); }
       .app-grid.small { grid-template-columns: repeat(4, 1fr); }
     }
+    .sortable-ghost { opacity: 0.4; background: #3a3f4a; border-radius: 24px; }
+    .sortable-drag { box-shadow: 0 10px 20px rgba(0,0,0,0.3); transform: scale(1.05); }
   </style>
 </head>
 <body>
@@ -168,6 +171,10 @@
   <div class="menu-item" data-view="small"><i class="fas fa-th-large"></i> Small</div>
   <div class="menu-item" data-view="list"><i class="fas fa-list"></i> List</div>
   <div class="menu-item" data-view="detail"><i class="fas fa-align-left"></i> Detail</div>
+  <div style="height:1px; background:rgba(255,255,255,0.1); margin:6px 0;"></div>
+  <div class="menu-item" id="exportDataBtn"><i class="fas fa-download"></i> Export as JSON</div>
+  <div class="menu-item" id="shareTextBtn"><i class="fas fa-share-alt"></i> Share as text</div>
+  <div class="menu-item" id="importDataBtn"><i class="fas fa-upload"></i> Import JSON</div>
 </div>
 
 <div class="notification-drawer" id="notifDrawer">
@@ -750,7 +757,7 @@ function renderCurrentPage() {
       tile.appendChild(iconDiv);
       tile.appendChild(nameSpan);
       
-      // Click to open link
+      // Click to open link in new tab (same group)
       tile.addEventListener('click', (e) => {
         e.stopPropagation();
         if (item.url) {
@@ -758,14 +765,109 @@ function renderCurrentPage() {
         }
       });
       
-      // Long press (contextmenu) to delete – now without confirm()
+      // Long press (contextmenu) – show edit/delete menu
       tile.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // Add a tiny haptic feedback if supported (optional)
         if (navigator.vibrate) navigator.vibrate(50);
-        // Direct deletion – undo toast will handle confirmation
-        deleteAppById(item.id);
+        
+        // Remove any existing popup
+        const existing = document.querySelector('.app-action-popup');
+        if (existing) existing.remove();
+        
+        const popup = document.createElement('div');
+        popup.className = 'app-action-popup';
+        popup.style.cssText = `
+          position: fixed;
+          background: #2c2f36;
+          backdrop-filter: blur(12px);
+          border-radius: 24px;
+          padding: 8px 0;
+          min-width: 140px;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+          z-index: 1000;
+          border: 0.5px solid rgba(255,255,255,0.15);
+          left: ${e.clientX - 70}px;
+          top: ${e.clientY - 30}px;
+        `;
+        
+        const editBtn = document.createElement('div');
+        editBtn.innerHTML = '<i class="fas fa-pencil-alt" style="width:24px;"></i> Rename';
+        editBtn.style.cssText = 'padding:10px 16px; cursor:pointer; display:flex; align-items:center; gap:8px;';
+        editBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          popup.remove();
+          const newName = prompt('Enter new name for this app:', item.name);
+          if (newName && newName.trim()) {
+            item.name = newName.trim().substring(0, 24);
+            saveAppsToLocalStorage();
+            renderCurrentPage();
+            addNotification(`✏️ Renamed to "${item.name}"`, 'pencil-alt');
+          }
+        });
+        
+        // Move Left button
+        const moveLeftBtn = document.createElement('div');
+        moveLeftBtn.innerHTML = '<i class="fas fa-arrow-left" style="width:24px;"></i> Move Left';
+        moveLeftBtn.style.cssText = 'padding:10px 16px; cursor:pointer; display:flex; align-items:center; gap:8px;';
+        moveLeftBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          popup.remove();
+          const idx = apps.findIndex(a => a.id === item.id);
+          if (idx > 0) {
+            [apps[idx-1], apps[idx]] = [apps[idx], apps[idx-1]];
+            saveAppsToLocalStorage();
+            recalcPagination();
+            renderCurrentPage();
+            addNotification(`← Moved left`, 'arrow-left');
+          } else {
+            addNotification('Already at first position', 'info-circle');
+          }
+        });
+        
+        // Move Right button
+        const moveRightBtn = document.createElement('div');
+        moveRightBtn.innerHTML = '<i class="fas fa-arrow-right" style="width:24px;"></i> Move Right';
+        moveRightBtn.style.cssText = 'padding:10px 16px; cursor:pointer; display:flex; align-items:center; gap:8px;';
+        moveRightBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          popup.remove();
+          const idx = apps.findIndex(a => a.id === item.id);
+          const lastRealIdx = apps.length - (apps[apps.length-1]?.isAddButton ? 2 : 1);
+          if (idx < lastRealIdx && idx !== -1) {
+            [apps[idx], apps[idx+1]] = [apps[idx+1], apps[idx]];
+            saveAppsToLocalStorage();
+            recalcPagination();
+            renderCurrentPage();
+            addNotification(`→ Moved right`, 'arrow-right');
+          } else {
+            addNotification('Already at last position', 'info-circle');
+          }
+        });
+        
+        const deleteBtn = document.createElement('div');
+        deleteBtn.innerHTML = '<i class="fas fa-trash-alt" style="width:24px;"></i> Delete';
+        deleteBtn.style.cssText = 'padding:10px 16px; cursor:pointer; display:flex; align-items:center; gap:8px; color:#ff6b6b;';
+        deleteBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          popup.remove();
+          deleteAppById(item.id);
+        });
+        
+        popup.appendChild(editBtn);
+        popup.appendChild(moveLeftBtn);
+        popup.appendChild(moveRightBtn);
+        popup.appendChild(deleteBtn);
+        document.body.appendChild(popup);
+        
+        // Close popup when clicking elsewhere
+        const closeHandler = (ev) => {
+          if (!popup.contains(ev.target)) {
+            popup.remove();
+            document.removeEventListener('click', closeHandler);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 10);
       });
       
       fragment.appendChild(tile);
@@ -774,6 +876,37 @@ function renderCurrentPage() {
   
   // Append all tiles at once
   grid.appendChild(fragment);
+  
+  // --- Initialise drag & drop (SortableJS) ---
+  if (typeof Sortable !== 'undefined' && grid) {
+    // Destroy previous instance if exists
+    if (grid.sortableInstance) grid.sortableInstance.destroy();
+    
+    grid.sortableInstance = Sortable.create(grid, {
+      animation: 200,
+      handle: '.app-icon',          // drag by icon only (keeps clicks intact)
+      draggable: '.app-tile:not(.add-tile)', // exclude add button
+      ghostClass: 'sortable-ghost',
+      dragClass: 'sortable-drag',
+      onEnd: function(evt) {
+        // Reorder apps array based on new DOM order
+        const newOrder = [];
+        const tiles = grid.querySelectorAll('.app-tile:not(.add-tile)');
+        tiles.forEach(tile => {
+          const id = tile.getAttribute('data-id');
+          const app = apps.find(a => a.id === id);
+          if (app) newOrder.push(app);
+        });
+        // Preserve add button at the end
+        const addBtn = apps.find(a => a.isAddButton);
+        apps = [...newOrder];
+        if (addBtn) apps.push(addBtn);
+        saveAppsToLocalStorage();
+        recalcPagination(); // itemsPerPage unchanged, but order saved
+        addNotification('🔄 App order updated', 'arrows-alt');
+      }
+    });
+  }
 }
 
   function escapeHtml(str) {
@@ -899,66 +1032,97 @@ function renderCurrentPage() {
       }
     }
   });
-  // --- SCROLL NOTIFICATION (reusable toast, throttled) ---
+  // --- SWIPE PAGING + SCROLL NOTIFICATION (improved) ---
   let lastScrollTop = 0;
   let scrollToastTimer = null;
-  let scrollToastElement = null;      // single reusable element
+  let scrollToastElement = null;
+  let touchStartX = 0;
+  let swipeThreshold = 80; // min distance for page swipe
+  let isSwiping = false;
 
-  // Create the toast element once (invisible initially)
+  // Create toast once
   function getScrollToast() {
     if (!scrollToastElement) {
       scrollToastElement = document.createElement('div');
       scrollToastElement.id = 'tempScrollNotif';
       scrollToastElement.textContent = '📱 Scroll detected · Pull down for notifications';
       Object.assign(scrollToastElement.style, {
-        position: 'fixed',
-        top: '60px',
-        left: '16px',
-        right: '16px',
-        background: '#2c2f36e6',
-        backdropFilter: 'blur(12px)',
-        padding: '10px',
-        borderRadius: '30px',
-        textAlign: 'center',
-        zIndex: '200',
-        fontSize: '13px',
-        transition: 'opacity 0.2s',
-        opacity: '0',
-        pointerEvents: 'none'
+        position: 'fixed', top: '60px', left: '16px', right: '16px',
+        background: '#2c2f36e6', backdropFilter: 'blur(12px)', padding: '10px',
+        borderRadius: '30px', textAlign: 'center', zIndex: '200', fontSize: '13px',
+        transition: 'opacity 0.2s', opacity: '0', pointerEvents: 'none'
       });
       document.body.appendChild(scrollToastElement);
     }
     return scrollToastElement;
   }
 
-  // Show the toast with a fade-in/out effect (throttled)
   let lastScrollNotificationTime = 0;
   function showScrollNotification() {
     const now = Date.now();
-    // Throttle: only show once every 3 seconds at most
     if (now - lastScrollNotificationTime < 3000) return;
     lastScrollNotificationTime = now;
-
     const toast = getScrollToast();
-    // Cancel any pending hide
     if (scrollToastTimer) clearTimeout(scrollToastTimer);
-    // Fade in
     toast.style.opacity = '1';
-    // Auto-hide after 2 seconds
-    scrollToastTimer = setTimeout(() => {
-      if (toast) toast.style.opacity = '0';
-      scrollToastTimer = null;
-    }, 2000);
+    scrollToastTimer = setTimeout(() => { if (toast) toast.style.opacity = '0'; }, 2000);
   }
 
-  // Scroll event listener (replaces the old one)
+  // --- Swipe detection for pages (horizontal) ---
+  viewportDiv.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSwiping = true;
+  }, { passive: true });
+
+  viewportDiv.addEventListener('touchmove', (e) => {
+    if (!isSwiping) return;
+    const deltaX = e.touches[0].clientX - touchStartX;
+    const deltaY = e.touches[0].clientY - touchStartY;
+    // If primarily horizontal and enough movement, prevent scroll
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 20) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  viewportDiv.addEventListener('touchend', (e) => {
+    if (!isSwiping) return;
+    isSwiping = false;
+    const deltaX = e.changedTouches[0].clientX - touchStartX;
+    const deltaY = e.changedTouches[0].clientY - touchStartY;
+    // Only trigger if horizontal swipe dominates
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > swipeThreshold) {
+      if (deltaX < 0 && currentPage < totalPages - 1) {
+        // swipe left -> next page
+        goToPage(currentPage + 1);
+        showPageChangeToast('→');
+      } else if (deltaX > 0 && currentPage > 0) {
+        // swipe right -> previous page
+        goToPage(currentPage - 1);
+        showPageChangeToast('←');
+      }
+    }
+  });
+
+  function showPageChangeToast(direction) {
+    const toast = document.createElement('div');
+    toast.textContent = `Page ${currentPage+1} / ${totalPages}`;
+    Object.assign(toast.style, {
+      position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)',
+      background: '#1e2129e6', backdropFilter: 'blur(8px)', padding: '6px 20px',
+      borderRadius: '40px', zIndex: '250', fontSize: '15px', fontWeight: '500',
+      transition: 'opacity 0.2s', pointerEvents: 'none'
+    });
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 800);
+  }
+
+  // Scroll handling (vertical)
   viewportDiv.addEventListener('scroll', () => {
     const st = viewportDiv.scrollTop;
     if (st > lastScrollTop && st > 30) {
-      // scrolling down – show reusable toast
       showScrollNotification();
     } else if (st < lastScrollTop && drawer.classList.contains('open')) {
-      // scrolling up while drawer open -> close drawer (reversible)
       drawer.classList.remove('open');
     }
     lastScrollTop = st <= 0 ? 0 : st;
@@ -969,11 +1133,82 @@ function renderCurrentPage() {
   const viewMenu = document.getElementById('viewMenu');
   dotsBtn.addEventListener('click', (e) => { e.stopPropagation(); viewMenu.classList.toggle('show'); });
   document.addEventListener('click', (e) => { if (!dotsBtn.contains(e.target) && !viewMenu.contains(e.target)) viewMenu.classList.remove('show'); });
-  document.querySelectorAll('.menu-item[data-view]').forEach(el => {
+   document.querySelectorAll('.menu-item[data-view]').forEach(el => {
     el.addEventListener('click', () => {
       const newView = el.getAttribute('data-view');
       if (newView) { viewMode = newView; localStorage.setItem('appViewMode', viewMode); recalcPagination(); renderCurrentPage(); renderDots(); viewMenu.classList.remove('show'); addNotification(`View: ${viewMode}`, "eye"); }
     });
+  });
+
+  // ---- SHARE / EXPORT / IMPORT ----
+  document.getElementById('exportDataBtn')?.addEventListener('click', () => {
+    viewMenu.classList.remove('show');
+    const exportData = apps.filter(a => !a.isAddButton).map(({ id, url, name, favicon }) => ({ id, url, name, favicon }));
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `home_apps_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addNotification(`📦 Exported ${exportData.length} apps`, 'download');
+  });
+
+  document.getElementById('shareTextBtn')?.addEventListener('click', () => {
+    viewMenu.classList.remove('show');
+    const list = apps.filter(a => !a.isAddButton).map(a => `${a.name}: ${a.url}`).join('\n');
+    if (navigator.share) {
+      navigator.share({
+        title: 'My Home Apps',
+        text: list,
+      }).catch(() => {});
+    } else {
+      // fallback: copy to clipboard
+      navigator.clipboard?.writeText(list).then(() => {
+        addNotification('📋 Copied app list to clipboard', 'clipboard');
+      }).catch(() => {
+        prompt('Copy this list manually:', list);
+      });
+    }
+  });
+
+  document.getElementById('importDataBtn')?.addEventListener('click', () => {
+    viewMenu.classList.remove('show');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          if (!Array.isArray(imported)) throw new Error('Not an array');
+          const validApps = imported.filter(app => app.url && app.name).map(app => ({
+            id: app.id || uid(),
+            url: app.url,
+            name: app.name.substring(0, 24),
+            favicon: app.favicon || `https://www.google.com/s2/favicons?domain=${new URL(app.url).hostname}&sz=64`,
+            isAddButton: false
+          }));
+          if (validApps.length === 0) throw new Error('No valid apps');
+          // Merge: replace all non‑plus apps
+          apps = validApps;
+          ensurePlusButton();
+          saveAppsToLocalStorage();
+          recalcPagination();
+          goToPage(0);
+          renderDots();
+          addNotification(`✅ Imported ${validApps.length} apps`, 'check-circle');
+        } catch (err) {
+          addNotification('❌ Invalid JSON file', 'exclamation-triangle');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   });
 
   // Battery & time (unchanged, but improved)
@@ -1157,7 +1392,12 @@ function init() {
         cursor: 'pointer'
       });
       
-      const permanentlyDismiss = () => {
+       const sessionDismiss = () => {
+        banner.remove();
+        // Do NOT set localStorage – it will reappear next session
+      };
+      
+      const permanentDismiss = () => {
         banner.remove();
         localStorage.setItem('fullscreenBannerDismissed', 'true');
       };
@@ -1167,24 +1407,36 @@ function init() {
           document.documentElement.requestFullscreen()
             .then(() => {
               addNotification("Fullscreen mode active", "expand");
-              permanentlyDismiss();
+              permanentDismiss(); // successful fullscreen = never show again
             })
             .catch((err) => {
               console.warn("Fullscreen request failed", err);
               addNotification("Fullscreen not available on this device", "exclamation-triangle");
-              permanentlyDismiss(); // also dismiss banner forever
+              permanentDismiss(); // failure = never show again
             });
         } else {
           addNotification("Fullscreen not supported", "exclamation-triangle");
-          permanentlyDismiss();
+          permanentDismiss();
         }
       });
       
       dismissBtn.addEventListener('click', () => {
-        permanentlyDismiss();
+        sessionDismiss(); // user just closed it – show again next time
       });
       
       document.body.appendChild(banner);
+      
+      // Auto‑dismiss after 1 second if not interacted with
+      const autoDismissTimer = setTimeout(() => {
+        if (banner.parentNode) {
+          banner.remove();
+          // Still keep the banner available for next session (do not permanent dismiss)
+        }
+      }, 1000);
+      
+      // Cancel timer if user interacts with the banner
+      banner.addEventListener('click', () => clearTimeout(autoDismissTimer), { once: true });
+      banner.addEventListener('touchstart', () => clearTimeout(autoDismissTimer), { once: true });
     } else if (!fullscreenSupported && !bannerPermanentlyDismissed) {
       // If fullscreen is not supported at all, store the flag to never show again
       localStorage.setItem('fullscreenBannerDismissed', 'true');
